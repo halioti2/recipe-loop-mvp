@@ -9,7 +9,11 @@ export default [
     files: ['**/*.{js,jsx}'],
     languageOptions: {
       ecmaVersion: 2020,
-      globals: globals.browser,
+      // Merge browser and node globals for files that might run in either environment
+      globals: {
+        ...globals.browser,
+        ...globals.node, 
+      },
       parserOptions: {
         ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },
@@ -28,6 +32,16 @@ export default [
         'warn',
         { allowConstantExport: true },
       ],
+    },
+  },
+  // Add specific config for Netlify functions
+  {
+    files: ['netlify/functions/**/*.js'],
+    languageOptions: {
+      globals: globals.node, // Use Node.js globals
+    },
+    rules: {
+      // Add any specific rules for functions here if needed
     },
   },
 ]
