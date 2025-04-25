@@ -2,20 +2,18 @@ import { supabase } from '../../src/lib/supabaseClient.js';
 import fetch from 'node-fetch';
 
 export async function handler(event, context) {
-  // CORS headers
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 
-  // Handle preflight
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers };
   }
 
-  const apiKey    = process.env.YOUTUBE_API_KEY;
-  const playlistId= process.env.YOUTUBE_PLAYLIST_ID;
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  const playlistId = process.env.YOUTUBE_PLAYLIST_ID;
   if (!apiKey) {
     return {
       statusCode: 500,
@@ -25,9 +23,10 @@ export async function handler(event, context) {
   }
 
   try {
-    const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${playlistId}&key=${apiKey}`;
-    const ytRes = await fetch(url);
-    const ytData= await ytRes.json();
+    // Fetch the playlist items
+    const playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${playlistId}&key=${apiKey}`;
+    const ytRes = await fetch(playlistUrl);
+    const ytData = await ytRes.json();
 
     if (!ytRes.ok) {
       return {
@@ -37,30 +36,36 @@ export async function handler(event, context) {
       };
     }
 
-    // 2. Prepare upsert calls, wrapping each row in an array and deduping on video_url
     const items = ytData.items || [];
-    const upserts = items
-      .map(item => {
-        const vid = item.snippet.resourceId?.videoId;
-        if (!vid) return null;
 
-        return supabase
-          .from('recipes')
-          .upsert(
-            [{
-              title:       item.snippet.title    || 'Untitled',
-              channel:     item.snippet.channelTitle || 'Unknown',
-              video_url:   `https://www.youtube.com/watch?v=${vid}`,
-              summary:     item.snippet.description || null,
-              ingredients: null,
-            }],
-            { onConflict: ['video_url'] }
-          );
-      })
-      .filter(x => x);  // drop any nulls
+    // Now build upserts
+    const upserts = await Promise.all(items.map(async (item) => {
+      const vid = item.snippet.resourceId?.videoId;
+      if (!vid) return null; // Skip if no videoId
 
+      // Fetch real video details
+      const videoUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${vid}&key=${apiKey}`;
+      const videoRes = await fetch(videoUrl);
+      const videoData = await videoRes.json();
+      
+      const realChannelTitle = videoData.items?.[0]?.snippet?.channelTitle || 'Unknown';
 
-    const results = await Promise.all(upserts);
+      return supabase
+        .from('recipes')
+        .upsert(
+          [{
+            title: item.snippet.title || 'Untitled',
+            channel: realChannelTitle, // <-- real video creator
+            video_url: `https://www.youtube.com/watch?v=${vid}`,
+            summary: item.snippet.description || null,
+            ingredients: null,
+          }],
+          { onConflict: ['video_url'] }
+        );
+    }));
+
+    const validUpserts = upserts.filter(x => x); // Filter out nulls
+    const results = await Promise.all(validUpserts);
     const successCount = results.filter(r => !r.error).length;
 
     return {
