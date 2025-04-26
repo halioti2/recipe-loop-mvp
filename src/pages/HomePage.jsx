@@ -47,19 +47,37 @@ export default function HomePage() {
     <div className="p-4 space-y-4">
       <h1 className="text-2xl font-bold mb-4">Saved Recipes</h1>
 
-      {/* Map over each recipe and show a simple card */}
-      {recipes.map((recipe) => (
-        <div
-          key={recipe.id}
-          className="border p-4 rounded shadow hover:shadow-md transition"
-        >
-          <h2 className="text-lg font-semibold">{recipe.title}</h2>
-          <p className="text-sm text-gray-600">Channel: {recipe.channel}</p>
-          <button className="mt-3 bg-blue-500 text-white px-4 py-2 rounded">
-            View Grocery List
-          </button>
+  {recipes.map((recipe) => {
+    const videoId = recipe.video_url.split('v=')[1];
+    const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+
+    return (
+      <div
+        key={recipe.id}
+        className="border p-4 rounded shadow hover:shadow-md transition max-w-sm mx-auto"
+      >
+        {/* Thumbnail Image */}
+        <div className="aspect-w-16 aspect-h-9 mb-2 overflow-hidden rounded">
+          <img
+            src={thumbnailUrl}
+            alt={recipe.title}
+            className="object-cover w-full h-full"
+          />
         </div>
-      ))}
+
+        {/* Title and Channel */}
+        <h2 className="text-lg font-semibold">{recipe.title}</h2>
+        <p className="text-sm text-gray-600">Channel: {recipe.channel}</p>
+
+        {/* View Grocery List Button */}
+        <button className="mt-3 bg-blue-500 text-white px-4 py-2 rounded">
+          View Grocery List
+        </button>
+      </div>
+    );
+  })}
+
+
     </div>
   );
 }
