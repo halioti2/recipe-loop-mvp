@@ -126,7 +126,7 @@ async function handleAddToGroceryList(e, recipe) {
             {isExpanded && (
               <div className="mt-4 space-y-4">
                 {/* YouTube embedded video */}
-                <div className="aspect-w-16 aspect-h-9 rounded overflow-hidden">
+                {/* <div className="aspect-w-16 aspect-h-9 rounded overflow-hidden">
                   <iframe
                     src={`https://www.youtube.com/embed/${videoId}`}
                     title={recipe.title}
@@ -134,14 +134,14 @@ async function handleAddToGroceryList(e, recipe) {
                     allowFullScreen
                     className="w-full h-full"
                   />
-                </div>
+                </div> */}
 
                 {/* Recipe Summary */}
-                {recipe.summary ? (
+                {/* {recipe.summary ? (
                   <p className="text-sm text-gray-700">{recipe.summary}</p>
                 ) : (
                   <p className="text-sm text-gray-400 italic">No summary available.</p>
-                )}
+                )} */}
 
                 {/* Ingredients List */}
                 {Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0 ? (
