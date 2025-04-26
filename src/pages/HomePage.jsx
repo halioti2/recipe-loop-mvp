@@ -122,11 +122,28 @@ async function handleAddToGroceryList(e, recipe) {
             <h2 className="text-lg font-semibold">{recipe.title}</h2>
             <p className="text-sm text-gray-600 mb-2">Channel: {recipe.channel}</p>
 
-            {/* 🔥 Expanded content: Ingredients only */}
+            {/* 🔥 Expanded content */}
             {isExpanded && (
-              <div className="mt-4">
-                <h3 className="text-md font-bold mb-2">Ingredients:</h3>
+              <div className="mt-4 space-y-4">
+                {/* YouTube embedded video */}
+                <div className="aspect-w-16 aspect-h-9 rounded overflow-hidden">
+                  <iframe
+                    src={`https://www.youtube.com/embed/${videoId}`}
+                    title={recipe.title}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="w-full h-full"
+                  />
+                </div>
 
+                {/* Recipe Summary */}
+                {recipe.summary ? (
+                  <p className="text-sm text-gray-700">{recipe.summary}</p>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">No summary available.</p>
+                )}
+
+                {/* Ingredients List */}
                 {Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0 ? (
                   <ul className="list-disc list-inside space-y-1 text-sm text-gray-800">
                     {recipe.ingredients.map((ingredient, idx) => (
