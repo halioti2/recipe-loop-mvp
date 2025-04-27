@@ -85,3 +85,7 @@ async function runSync() {
     body: JSON.stringify({ status: 'synced', count: successful }),
   };
 }
+
+export const config = {
+  schedule: "*/5 * * * *"  // 🕔 Every 5 minutes
+};
