@@ -1,5 +1,4 @@
 import { supabase } from '../../src/lib/supabaseClient.js';
-import fetch from 'node-fetch';
 
 export async function handler(event, context) {
   const headers = {
@@ -87,5 +86,5 @@ async function runSync() {
 }
 
 export const config = {
-  schedule: "*/5 * * * *"  // 🕔 Every 5 minutes
+  schedule: "*/1 * * * *"  // 🕔 Every 1 minutes
 };
