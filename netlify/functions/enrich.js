@@ -1,6 +1,18 @@
 import { supabase } from '../../src/lib/supabaseClient.js';
 import { GoogleAuth } from 'google-auth-library';
 
+// ⇩ NEW: grab credentials from env (raw JSON string)
+function getGoogleCredentials() {
+  const raw = process.env.GCP_SERVICE_ACCOUNT_JSON;      // one-line JSON you pasted
+  if (!raw) return null;                                 // let teammates fall back to file path
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('Failed to parse GCP_SERVICE_ACCOUNT_JSON:', e);
+    return null;
+  }
+}
+
 export async function handler(event, context) {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -32,7 +44,11 @@ export async function handler(event, context) {
     }
 
     /* ── 2. Prep Gemini client once ───────────────────────────────────────── */
-    const auth   = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+    //const auth   = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+    const auth   = new GoogleAuth({
+      credentials: getGoogleCredentials() || undefined, // falls back to ADC if null
+      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+    });
     const client = await auth.getClient();
     const apiUrl =
       `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}` +
