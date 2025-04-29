@@ -37,62 +37,66 @@ export default function HomePage() {
     return <p className="p-4 text-center">No recipes yet.</p>;
   }
 
-  // Handle adding recipe to grocery list
-async function handleAddToGroceryList(e, recipe) {
-  e.stopPropagation(); // 🔥 Prevent the card from toggling expanded/collapsed
-
-  try {
-    // Step 1: Check if recipe is already in lists
-    const { data: existing, error: checkError } = await supabase
-      .from('lists')
-      .select('id')
-      .eq('recipe_id', recipe.id)
-      .maybeSingle(); // Only expect one result
-
-    if (checkError) {
-      console.error('❌ Error checking lists:', checkError);
-      alert('Something went wrong. Try again.');
-      return;
+  async function handleAddToGroceryList(e, recipe) {
+    e.stopPropagation(); // 🔥 Prevent the card from toggling expanded/collapsed
+  
+    try {
+      // Step 1: Check if recipe is already in lists
+      const { data: existing, error: checkError } = await supabase
+        .from('lists')
+        .select('id')
+        .eq('recipe_id', recipe.id)
+        .maybeSingle();
+  
+      if (checkError) {
+        console.error('❌ Error checking lists:', checkError);
+        alert('Something went wrong. Try again.');
+        return;
+      }
+  
+      if (existing) {
+        alert('Already added.');
+        return;
+      }
+  
+      // Step 2: Insert into lists, now copying ingredients
+      const { error: insertError } = await supabase
+        .from('lists')
+        .insert([
+          {
+            recipe_id: recipe.id,
+            ingredients: recipe.ingredients || [], // 🟣 copy ingredients from recipe
+          },
+        ]);
+  
+      if (insertError) {
+        console.error('❌ Error inserting into lists:', insertError);
+        alert('Something went wrong. Try again.');
+        return;
+      }
+  
+      // Step 3: Log event into events table
+      const { error: eventError } = await supabase
+        .from('events')
+        .insert([
+          {
+            action: 'add_to_grocery_list',
+            recipe_id: recipe.id,
+          },
+        ]);
+  
+      if (eventError) {
+        console.error('❌ Error logging event:', eventError);
+        // (not critical — can skip showing user this)
+      }
+  
+      // Step 4: Show success alert
+      alert('Groceries added.');
+    } catch (err) {
+      console.error('❌ Unexpected error:', err);
+      alert('Something went wrong.');
     }
-
-    if (existing) {
-      alert('Already added.');
-      return;
-    }
-
-    // Step 2: Insert into lists
-    const { error: insertError } = await supabase
-      .from('lists')
-      .insert([{ recipe_id: recipe.id }]);
-
-    if (insertError) {
-      console.error('❌ Error inserting into lists:', insertError);
-      alert('Something went wrong. Try again.');
-      return;
-    }
-
-    // Step 3: Log event into events table
-    const { error: eventError } = await supabase
-      .from('events')
-      .insert([
-        {
-          event_type: 'add_to_grocery_list',
-          recipe_id: recipe.id,
-        },
-      ]);
-
-    if (eventError) {
-      console.error('❌ Error logging event:', eventError);
-      // (not critical — can skip showing user this)
-    }
-
-    // Step 4: Show success alert
-    alert('Groceries added.');
-  } catch (err) {
-    console.error('❌ Unexpected error:', err);
-    alert('Something went wrong.');
-  }
-}
+  }  
 
   return (
     <div className="p-4 space-y-4">
