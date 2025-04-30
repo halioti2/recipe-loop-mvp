@@ -3,6 +3,16 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 function ListPage() {
+  // Persist checkedItems in localStorage
+  const [checkedItems, setCheckedItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem('grocery_checked');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      console.error("Failed to parse checkedItems from localStorage", e);
+      return {};
+    }
+  });
   const [listData, setListData] = useState([]);
   const [groupedLists, setGroupedLists] = useState({});
   const [loading, setLoading] = useState(true);
@@ -35,6 +45,15 @@ function ListPage() {
     }
     fetchListData();
   }, []);
+
+  // Save checkedItems to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('grocery_checked', JSON.stringify(checkedItems));
+    } catch (e) {
+      console.error("Failed to save checkedItems to localStorage", e);
+    }
+  }, [checkedItems]);
 
   function handleCopyList() {
     let textToCopy = '';
@@ -81,6 +100,7 @@ function ListPage() {
       }
       // Step 3: Clear state
       setGroupedLists({});
+      setCheckedItems({});
       alert('List cleared');
     } catch (err) {
       console.error('❌ Unexpected error during reset:', err);
@@ -111,11 +131,31 @@ function ListPage() {
       {Object.entries(groupedLists).map(([title, ingredients]) => (
         <div key={title} className="mb-6">
           <h2 className="text-xl font-semibold">{title}</h2>
-          <ul className="list-disc list-inside">
-            {ingredients.map((ingredient, idx) => (
-              <li key={idx}>{ingredient}</li>
-            ))}
-          </ul>
+          <ul className="space-y-2">
+          {ingredients.map((ingredient, idx) => {
+            const key = `${title}-${idx}`;
+            const isChecked = checkedItems[key] || false;
+            return (
+              <li key={key} className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id={key}
+                  className="w-4 h-4"
+                  checked={isChecked}
+                  onChange={() =>
+                    setCheckedItems((prev) => ({
+                      ...prev,
+                      [key]: !prev[key],
+                    }))
+                  }
+                />
+                <label htmlFor={key} className={isChecked ? "line-through text-gray-400" : "text-sm"}>
+                  {ingredient}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
         </div>
       ))}
     </main>
