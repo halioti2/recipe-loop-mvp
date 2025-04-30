@@ -98,8 +98,33 @@ export default function HomePage() {
     }
   }  
 
+  async function handleResync() {
+    try {
+      const syncResponse = await fetch('/.netlify/functions/sync');
+      const syncResult = await syncResponse.json();
+
+      const enrichResponse = await fetch('/.netlify/functions/enrich');
+      const enrichResult = await enrichResponse.json();
+
+      alert(`✅ Resync complete.\nSynced: ${syncResult.added || 0} recipes.\nEnriched: ${enrichResult.updated || 0}`);
+      // Optional: refresh recipes if fetchRecipes exists
+      if (typeof fetchRecipes === 'function') {
+        await fetchRecipes();
+      }
+    } catch (err) {
+      console.error('❌ Resync error:', err);
+      alert('Something went wrong during resync.');
+    }
+  }
+
   return (
     <div className="p-4 space-y-4">
+      <button
+        onClick={handleResync}
+        className="mb-4 bg-purple-600 text-white px-4 py-2 rounded"
+      >
+        Resync & Enrich
+      </button>
       <h1 className="text-2xl font-bold mb-4">Saved Recipes</h1>
 
       {recipes.map((recipe) => {
@@ -170,8 +195,6 @@ export default function HomePage() {
           </div>
         );
       })}
-
-
     </div>
   );
 }

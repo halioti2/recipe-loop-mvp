@@ -81,7 +81,7 @@ async function runSync() {
 
   return {
     statusCode: 200,
-    body: JSON.stringify({ status: 'synced', count: successful }),
+    body: JSON.stringify({ status: 'synced', added: successful }),
   };
 }
 
