@@ -5,6 +5,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [recipes, setRecipes] = useState([]);
   const [expandedId, setExpandedId] = useState(null); // 🔥 New: Track which recipe is expanded
+  const [resyncing, setResyncing] = useState(false); // 🔥 New: Resync loading state
 
   useEffect(() => {
     async function fetchRecipes() {
@@ -99,6 +100,7 @@ export default function HomePage() {
   }  
 
   async function handleResync() {
+    setResyncing(true); // Start loading
     try {
       const syncResponse = await fetch('/.netlify/functions/sync');
       const syncResult = await syncResponse.json();
@@ -106,7 +108,13 @@ export default function HomePage() {
       const enrichResponse = await fetch('/.netlify/functions/enrich');
       const enrichResult = await enrichResponse.json();
 
-      alert(`✅ Resync complete.\nSynced: ${syncResult.added || 0} recipes.\nEnriched: ${enrichResult.updated || 0}`);
+      alert(
+        `✅ Resync complete.\n\n` +
+        `Synced: ${syncResult.added || 0} new recipes.\n` +
+        `Enriched: ${enrichResult.updated || 0} recipes.\n\n` +
+        `🔄 Please refresh the page to see the latest updates.`
+      );
+      
       // Optional: refresh recipes if fetchRecipes exists
       if (typeof fetchRecipes === 'function') {
         await fetchRecipes();
@@ -115,15 +123,19 @@ export default function HomePage() {
       console.error('❌ Resync error:', err);
       alert('Something went wrong during resync.');
     }
+    setResyncing(false); // Done loading
   }
 
   return (
     <div className="p-4 space-y-4">
       <button
         onClick={handleResync}
-        className="mb-4 bg-purple-600 text-white px-4 py-2 rounded"
+        disabled={resyncing}
+        className={`mb-4 bg-purple-600 text-white px-4 py-2 rounded ${
+          resyncing ? 'bg-purple-400 cursor-not-allowed' : 'hover:bg-purple-700'
+        }`}
       >
-        Resync & Enrich
+        {resyncing ? 'Resyncing…' : 'Resync & Enrich'}
       </button>
       <h1 className="text-2xl font-bold mb-4">Saved Recipes</h1>
 
