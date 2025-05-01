@@ -1,6 +1,6 @@
 import { supabase } from '../../src/lib/supabaseClient.js';
 import { GoogleAuth } from 'google-auth-library';
-import fetchTranscript from '../../src/lib/fetchTranscript.js';
+import { fetchTranscript } from '../../src/lib/fetchTranscript.js';
 
 // ⇩ NEW: grab credentials from env (raw JSON string)
 function getGoogleCredentials() {
@@ -48,7 +48,6 @@ export async function handler(event, context) {
     }
 
     /* ── 2. Prep Gemini client once ───────────────────────────────────────── */
-    //const auth   = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
     const auth   = new GoogleAuth({
       credentials: getGoogleCredentials() || undefined, // falls back to ADC if null
       scopes: ['https://www.googleapis.com/auth/cloud-platform'],
@@ -65,7 +64,7 @@ export async function handler(event, context) {
       // --- Extract videoId from video_url ---
       let videoId = '';
       if (r.video_url) {
-        const match = r.video_url.match(/(?:v=|youtu\\.be\/|shorts\/)([\\w-]{11})/);
+        const match = r.video_url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
         videoId = match ? match[1] : r.video_url.slice(-11);
       }
       // --- Fetch transcript if possible ---

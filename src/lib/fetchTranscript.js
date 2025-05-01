@@ -1,7 +1,7 @@
 // src/lib/fetchTranscript.js
 import { YoutubeTranscript } from 'youtube-transcript';
 
-export default async function fetchTranscript(videoId) {
+export async function fetchTranscript(videoId) {
   try {
     const segments = await YoutubeTranscript.fetchTranscript(videoId);
     let transcript = segments.map(seg => seg.text).join(' ');
