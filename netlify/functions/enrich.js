@@ -1,5 +1,6 @@
 import { supabase } from '../../src/lib/supabaseClient.js';
 import { GoogleAuth } from 'google-auth-library';
+import fetchTranscript from '../../src/lib/fetchTranscript.js';
 
 // ⇩ NEW: grab credentials from env (raw JSON string)
 function getGoogleCredentials() {
@@ -35,10 +36,13 @@ export async function handler(event, context) {
     /* ── 1. Get every recipe whose ingredients are still NULL ─────────────── */
     const { data: recipes, error } = await supabase
       .from('recipes')
-      .select('id, title, channel, summary')
+      .select('id, title, channel, summary, video_url')
       .is('ingredients', null);
 
-    if (error) throw error;
+    if (error) {
+      return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
+    }
+
     if (!recipes.length) {
       return { statusCode: 200, headers, body: JSON.stringify({ status: 'no recipes to enrich' }) };
     }
@@ -58,12 +62,19 @@ export async function handler(event, context) {
 
     /* ── 3. Loop through each recipe needing enrichment ──────────────────── */
     for (const r of recipes) {
-      const prompt = `
-        Extract the ingredients used in this recipe as a JSON array of strings.
-        Title: ${r.title}
-        Channel: ${r.channel}
-        Summary: ${r.summary}
-      `;
+      // --- Extract videoId from video_url ---
+      let videoId = '';
+      if (r.video_url) {
+        const match = r.video_url.match(/(?:v=|youtu\\.be\/|shorts\/)([\\w-]{11})/);
+        videoId = match ? match[1] : r.video_url.slice(-11);
+      }
+      // --- Fetch transcript if possible ---
+      let transcript = '';
+      if (videoId) {
+        transcript = await fetchTranscript(videoId);
+      }
+      // --- Build enrichment prompt ---
+      const prompt = `\nExtract the ingredients used in this recipe as a JSON array of strings.\nEach string should be a single ingredient, such as "1 cup flour" or "2 eggs".\n\nTitle: ${r.title}\nChannel: ${r.channel}\nSummary: ${r.summary}\n${transcript ? `Transcript: ${transcript}` : ''}\n`;
 
       // Call Gemini
       let raw;
