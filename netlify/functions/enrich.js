@@ -73,7 +73,11 @@ export async function handler(event, context) {
         transcript = await fetchTranscript(videoId);
       }
       // --- Build enrichment prompt ---
-      const prompt = `\nExtract the ingredients used in this recipe as a JSON array of strings.\nEach string should be a single ingredient, such as "1 cup flour" or "2 eggs".\n\nTitle: ${r.title}\nChannel: ${r.channel}\nSummary: ${r.summary}\n${transcript ? `Transcript: ${transcript}` : ''}\n`;
+      const prompt = `\nExtract the ingredients used in this recipe as a JSON array of strings.\nEach string should be a single ingredient, such as "1 cup flour" or "2 eggs".\n\nTitle: ${r.title}\nChannel: ${r.channel}\nSummary: ${r.summary}
+      ${transcript ? `Transcript: ${transcript}` : ''}
+      `;
+
+      console.log(`📝 Gemini Prompt for recipe ${r.id}:\n${prompt}`);
 
       // Call Gemini
       let raw;
@@ -87,6 +91,7 @@ export async function handler(event, context) {
           }
         });
         raw = aiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        console.log(`📨 Gemini response for ${r.id}:\n`, raw);
       } catch (gErr) {
         console.error(`Gemini error for ${r.id}:`, gErr);
         continue;                        // skip this recipe, keep looping
