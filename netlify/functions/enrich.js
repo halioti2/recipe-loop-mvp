@@ -1,11 +1,11 @@
 import { supabase } from '../../src/lib/supabaseClient.js';
 import { GoogleAuth } from 'google-auth-library';
-import { fetchTranscript } from '../../src/lib/fetchTranscript.js';
 
-// ⇩ NEW: grab credentials from env (raw JSON string)
+const TRANSCRIPT_API_URL = 'https://transcript-microservice.fly.dev/transcript';
+
 function getGoogleCredentials() {
-  const raw = process.env.GCP_SERVICE_ACCOUNT_JSON;      // one-line JSON you pasted
-  if (!raw) return null;                                 // let teammates fall back to file path
+  const raw = process.env.GCP_SERVICE_ACCOUNT_JSON;
+  if (!raw) return null;
   try {
     return JSON.parse(raw);
   } catch (e) {
@@ -25,15 +25,14 @@ export async function handler(event, context) {
   }
 
   const projectId = process.env.GCP_PROJECT_ID;
-  const location  = process.env.GCP_LOCATION  || 'us-central1';
-  const modelId   = process.env.GCP_MODEL_ID   || 'gemini-2.0-flash-001';
+  const location = process.env.GCP_LOCATION || 'us-central1';
+  const modelId = process.env.GCP_MODEL_ID || 'gemini-2.0-flash-001';
 
   if (!projectId) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: 'Missing GCP_PROJECT_ID' }) };
   }
 
   try {
-    /* ── 1. Get every recipe whose ingredients are still NULL ─────────────── */
     const { data: recipes, error } = await supabase
       .from('recipes')
       .select('id, title, channel, summary, video_url')
@@ -47,39 +46,38 @@ export async function handler(event, context) {
       return { statusCode: 200, headers, body: JSON.stringify({ status: 'no recipes to enrich' }) };
     }
 
-    /* ── 2. Prep Gemini client once ───────────────────────────────────────── */
-    const auth   = new GoogleAuth({
-      credentials: getGoogleCredentials() || undefined, // falls back to ADC if null
+    const auth = new GoogleAuth({
+      credentials: getGoogleCredentials() || undefined,
       scopes: ['https://www.googleapis.com/auth/cloud-platform'],
     });
     const client = await auth.getClient();
-    const apiUrl =
-      `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}` +
-      `/locations/${location}/publishers/google/models/${modelId}:generateContent`;
+    const apiUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:generateContent`;
 
     let successCount = 0;
 
-    /* ── 3. Loop through each recipe needing enrichment ──────────────────── */
     for (const r of recipes) {
-      // --- Extract videoId from video_url ---
       let videoId = '';
       if (r.video_url) {
         const match = r.video_url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
         videoId = match ? match[1] : r.video_url.slice(-11);
       }
-      // --- Fetch transcript if possible ---
+
       let transcript = '';
       if (videoId) {
-        transcript = await fetchTranscript(videoId);
+        try {
+          const res = await fetch(`${TRANSCRIPT_API_URL}?video_id=${videoId}`);
+          const data = await res.json();
+          transcript = data.transcript || '';
+        } catch (e) {
+          console.warn(`Transcript fetch failed for ${videoId}:`, e.message);
+        }
       }
-      // --- Build enrichment prompt ---
+
       const prompt = `\nExtract the ingredients used in this recipe as a JSON array of strings.\nEach string should be a single ingredient, such as "1 cup flour" or "2 eggs".\n\nTitle: ${r.title}\nChannel: ${r.channel}\nSummary: ${r.summary}
-      ${transcript ? `Transcript: ${transcript}` : ''}
-      `;
+      ${transcript ? `Transcript: ${transcript}` : ''}`;
 
       console.log(`📝 Gemini Prompt for recipe ${r.id}:\n${prompt}`);
 
-      // Call Gemini
       let raw;
       try {
         const aiRes = await client.request({
@@ -94,10 +92,9 @@ export async function handler(event, context) {
         console.log(`📨 Gemini response for ${r.id}:\n`, raw);
       } catch (gErr) {
         console.error(`Gemini error for ${r.id}:`, gErr);
-        continue;                        // skip this recipe, keep looping
+        continue;
       }
 
-      // Strip fences & parse
       const jsonText = raw.replace(/```json|```/g, '').trim();
       let arr;
       try {
@@ -108,7 +105,6 @@ export async function handler(event, context) {
         continue;
       }
 
-      // Update Supabase
       const { error: upErr } = await supabase
         .from('recipes')
         .update({ ingredients: arr })
@@ -122,7 +118,6 @@ export async function handler(event, context) {
       successCount += 1;
     }
 
-    /* ── 4. Done ─────────────────────────────────────────────────────────── */
     return {
       statusCode: 200,
       headers,
