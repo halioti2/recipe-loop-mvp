@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { GroceryCartIcon } from '../components/icons/GroceryCartIcon';
+import { HeartIcon } from '../components/icons/HeartIcon';
 
 export default function HomePage() {
   const [loading, setLoading] = useState(true);
@@ -13,15 +15,10 @@ export default function HomePage() {
     const { data, error } = await supabase
       .from('recipes')
       .select('*')
-      .order('created_at', { ascending: false }); // 🔄 Newest first
+      .order('created_at', { ascending: false });
 
-    if (data) {
-      setRecipes(data);
-    }
-
-    if (error) {
-      console.error('❌ Fetch error:', error);
-    }
+    if (data) setRecipes(data);
+    if (error) console.error('❌ Fetch error:', error);
 
     setLoading(false);
   }
@@ -32,31 +29,21 @@ export default function HomePage() {
 
   async function handleResync() {
     setResyncing(true);
-
     try {
       const syncResponse = await fetch('/.netlify/functions/sync');
       const syncResult = await syncResponse.json();
-
       const enrichResponse = await fetch('/.netlify/functions/enrich');
       const enrichResult = await enrichResponse.json();
-
-      alert(
-        `✅ Resync complete.\n\n` +
-        `Synced: ${syncResult.added || 0} new recipes.\n` +
-        `Enriched: ${enrichResult.updated || 0} recipes.\n\n` +
-        `🔄 Please refresh the page to see the latest updates.`
-      );
+      alert(`✅ Resync complete.\n\nSynced: ${syncResult.added || 0} new recipes.\nEnriched: ${enrichResult.updated || 0} recipes.\n\n🔄 Please refresh the page to see the latest updates.`);
     } catch (err) {
       console.error('❌ Resync error:', err);
       alert('Something went wrong during resync.');
     }
-
     setResyncing(false);
   }
 
   async function handleAddToGroceryList(e, recipe) {
     e.stopPropagation();
-
     try {
       const { data: existing, error: checkError } = await supabase
         .from('lists')
@@ -85,10 +72,7 @@ export default function HomePage() {
         return;
       }
 
-      await supabase.from('events').insert([
-        { action: 'add_to_grocery_list', recipe_id: recipe.id }
-      ]);
-
+      await supabase.from('events').insert([{ action: 'add_to_grocery_list', recipe_id: recipe.id }]);
       alert('Groceries added.');
     } catch (err) {
       console.error('❌ Unexpected error:', err);
@@ -97,14 +81,11 @@ export default function HomePage() {
   }
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Always show sync button */}
+    <div className="p-4">
       <button
         onClick={handleResync}
         disabled={resyncing}
-        className={`mb-4 px-4 py-2 rounded text-white ${
-          resyncing ? 'bg-purple-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'
-        }`}
+        className={`mb-4 px-4 py-2 rounded text-white ${resyncing ? 'bg-purple-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`}
       >
         {resyncing ? 'Resyncing…' : 'Resync & Enrich'}
       </button>
@@ -116,51 +97,98 @@ export default function HomePage() {
       ) : recipes.length === 0 ? (
         <p className="text-center text-gray-600">No recipes yet. Try syncing!</p>
       ) : (
-        recipes.map((recipe) => {
-          const videoId = recipe.video_url?.split('v=')[1];
-          const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-          const isExpanded = expandedId === recipe.id;
+        <div className="space-y-6">
+          {recipes.map((recipe) => {
+            const videoId = recipe.video_url?.split('v=')[1];
+            const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+            const isExpanded = expandedId === recipe.id;
 
-          return (
-            <div
-              key={recipe.id}
-              className="border p-4 rounded shadow hover:shadow-md transition max-w-sm mx-auto cursor-pointer"
-              onClick={() => setExpandedId(isExpanded ? null : recipe.id)}
-            >
-              <div className="aspect-w-16 aspect-h-9 mb-2 overflow-hidden rounded">
-                <img
-                  src={thumbnailUrl}
-                  alt={recipe.title}
-                  className="object-cover w-full h-full"
-                />
-              </div>
-
-              <h2 className="text-lg font-semibold">{recipe.title}</h2>
-              <p className="text-sm text-gray-600 mb-2">Channel: {recipe.channel}</p>
-
-              {isExpanded && (
-                <div className="mt-4 space-y-4">
-                  {Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0 ? (
-                    <ul className="list-disc list-inside space-y-1 text-sm text-gray-800">
-                      {recipe.ingredients.map((ingredient, idx) => (
-                        <li key={idx}>{ingredient}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-gray-400 italic">Ingredients not available.</p>
-                  )}
-                </div>
-              )}
-
-              <button
-                onClick={(e) => handleAddToGroceryList(e, recipe)}
-                className="mt-3 bg-blue-500 text-white px-4 py-2 rounded"
+            return (
+              <div
+                key={recipe.id}
+                className="bg-white rounded-md shadow-sm border max-w-md mx-auto"
               >
-                Add to Grocery List
-              </button>
-            </div>
-          );
-        })
+                <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                  <div className="flex items-center gap-2">
+                    {/* <div className="w-8 h-8 bg-gray-300 rounded-full" /> */}
+                    <div className="text-sm font-semibold">{recipe.channel}</div>
+                  </div>
+                </div>
+
+                <div className="w-full aspect-square bg-black">
+                  <img src={thumbnailUrl} alt={recipe.title} className="object-cover w-full h-full" />
+                </div>
+
+                <div className="flex items-center justify-between px-4 pt-2 text-xl">
+                  <div className="flex gap-4">
+                    <span className="inline-flex items-center">
+                      <HeartIcon className="w-5 h-5" />
+                    </span>
+                    {/* <span className="inline-flex items-center text-sm h-5">💬</span>
+                    <span className="inline-flex items-center text-sm h-5">📤</span> */}
+                    <button
+                      onClick={(e) => handleAddToGroceryList(e, recipe)}
+                      className="hover:scale-110 transition inline-flex items-center"
+                      title="Add to Grocery List"
+                    >
+                      <GroceryCartIcon className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* <button
+                    onClick={(e) => handleAddToGroceryList(e, recipe)}
+                    className="hover:scale-110 transition inline-flex items-center"
+                    title="Add to Grocery List"
+                  >
+                    <GroceryCartIcon className="w-5 h-5" />
+                  </button> */}
+                </div>
+
+                {/* <div className="px-4 text-sm font-semibold pt-1">294,210 likes</div> */}
+
+                <div className="px-4 pt-1 text-sm">
+                  <span className="font-semibold">{recipe.title}</span>
+                  {/* {recipe.channel} */}
+                </div>
+
+                {!isExpanded && (
+                  <div className="px-4 pt-1">
+                    <button
+                      onClick={() => setExpandedId(recipe.id)}
+                      className="text-sm text-gray-500 hover:underline"
+                    >
+                      View all ingredients
+                    </button>
+                  </div>
+                )}
+
+                {isExpanded && (
+                  <>
+                    <div className="px-4 pt-2 text-sm text-gray-800">
+                      {Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0 ? (
+                        <ul className="list-disc list-inside space-y-1">
+                          {recipe.ingredients.map((i, idx) => (
+                            <li key={idx}>{i}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="italic text-gray-400">Ingredients not available.</p>
+                      )}
+                    </div>
+                    <div className="px-4 pt-1">
+                      <button
+                        onClick={() => setExpandedId(null)}
+                        className="text-sm text-gray-500 hover:underline"
+                      >
+                        Hide ingredients
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
