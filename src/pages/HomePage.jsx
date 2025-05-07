@@ -97,7 +97,7 @@ export default function HomePage() {
       ) : recipes.length === 0 ? (
         <p className="text-center text-gray-600">No recipes yet. Try syncing!</p>
       ) : (
-        <div className="space-y-6">
+        <div className="max-w-md mx-auto bg-white">
           {recipes.map((recipe) => {
             const videoId = recipe.video_url?.split('v=')[1];
             const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
@@ -106,26 +106,25 @@ export default function HomePage() {
             return (
               <div
                 key={recipe.id}
-                className="bg-white rounded-md shadow-sm border max-w-md mx-auto"
+                className="bg-white border-t border-gray-200"
               >
-                <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                <div className="flex items-center justify-between px-4 pt-3 pb-1">
                   <div className="flex items-center gap-2">
-                    {/* <div className="w-8 h-8 bg-gray-300 rounded-full" /> */}
                     <div className="text-sm font-semibold">{recipe.channel}</div>
                   </div>
                 </div>
 
-                <div className="w-full aspect-square bg-black">
-                  <img src={thumbnailUrl} alt={recipe.title} className="object-cover w-full h-full" />
-                </div>
+                <img
+                  src={thumbnailUrl}
+                  alt={recipe.title}
+                  className="w-full aspect-square object-cover"
+                />
 
-                <div className="flex items-center justify-between px-4 pt-2 text-xl">
+                <div className="flex items-center justify-between px-4 pt-1">
                   <div className="flex gap-4">
                     <span className="inline-flex items-center">
                       <HeartIcon className="w-5 h-5" />
                     </span>
-                    {/* <span className="inline-flex items-center text-sm h-5">💬</span>
-                    <span className="inline-flex items-center text-sm h-5">📤</span> */}
                     <button
                       onClick={(e) => handleAddToGroceryList(e, recipe)}
                       className="hover:scale-110 transition inline-flex items-center"
@@ -134,21 +133,10 @@ export default function HomePage() {
                       <GroceryCartIcon className="w-5 h-5" />
                     </button>
                   </div>
-
-                  {/* <button
-                    onClick={(e) => handleAddToGroceryList(e, recipe)}
-                    className="hover:scale-110 transition inline-flex items-center"
-                    title="Add to Grocery List"
-                  >
-                    <GroceryCartIcon className="w-5 h-5" />
-                  </button> */}
                 </div>
-
-                {/* <div className="px-4 text-sm font-semibold pt-1">294,210 likes</div> */}
 
                 <div className="px-4 pt-1 text-sm">
                   <span className="font-semibold">{recipe.title}</span>
-                  {/* {recipe.channel} */}
                 </div>
 
                 {!isExpanded && (
@@ -164,7 +152,7 @@ export default function HomePage() {
 
                 {isExpanded && (
                   <>
-                    <div className="px-4 pt-2 text-sm text-gray-800">
+                    <div className="px-4 pt-1 text-sm text-gray-800">
                       {Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0 ? (
                         <ul className="list-disc list-inside space-y-1">
                           {recipe.ingredients.map((i, idx) => (
