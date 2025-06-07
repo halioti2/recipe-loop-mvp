@@ -15,7 +15,8 @@ export async function handler(event, context) {
   const { data: recipes, error } = await supabase
     .from('recipes')
     .select('id, video_url')
-    .is('transcript', null);
+    .is('transcript', null)
+    .limit(2);
 
   if (error) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
