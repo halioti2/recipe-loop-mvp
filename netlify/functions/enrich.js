@@ -68,6 +68,12 @@ export async function handler(event, context) {
           const res = await fetch(`${TRANSCRIPT_API_URL}?video_id=${videoId}`);
           const data = await res.json();
           transcript = data.transcript || '';
+          console.log(`🌐 Transcript service response for ${videoId}:`, JSON.stringify(data, null, 2));
+            if (transcript) {
+              console.log(`🗣 Transcript for ${videoId} (first 300 chars):\n${transcript.slice(0, 300)}...`);
+            } else {
+              console.warn(`⚠️ No transcript returned for ${videoId}`);
+            }
         } catch (e) {
           console.warn(`Transcript fetch failed for ${videoId}:`, e.message);
         }
