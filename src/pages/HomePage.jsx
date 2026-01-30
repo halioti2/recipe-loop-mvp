@@ -10,12 +10,19 @@ export default function HomePage() {
   async function fetchRecipes() {
     setLoading(true);
 
+    // Debug: Log what database we're connecting to
+    console.log('=== HOMEPAGE DEBUG ===');
+    console.log('Supabase client URL:', supabase.supabaseUrl);
+    console.log('Environment VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
+
     const { data, error } = await supabase
       .from('recipes')
       .select('*')
       .order('created_at', { ascending: false }); // 🔄 Newest first
 
     if (data) {
+      console.log('Fetched recipes count:', data.length);
+      console.log('Sample recipe:', data[0]);
       setRecipes(data);
     }
 

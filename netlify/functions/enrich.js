@@ -1,17 +1,36 @@
 import { supabase } from '../../src/lib/supabaseClient.js';
-import { GoogleAuth } from 'google-auth-library';
 
 const TRANSCRIPT_API_URL = 'https://transcript-microservice.fly.dev/transcript';
 
-function getGoogleCredentials() {
-  const raw = process.env.GCP_SERVICE_ACCOUNT_JSON;
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
-    console.error('Failed to parse GCP_SERVICE_ACCOUNT_JSON:', e);
-    return null;
+// Use direct Gemini API instead of Vertex AI
+async function callGeminiAPI(prompt, apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{
+          text: prompt
+        }]
+      }],
+      generationConfig: {
+        maxOutputTokens: 512,
+        temperature: 0.2
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} ${errorText}`);
   }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 export async function handler(event, context) {
@@ -20,22 +39,27 @@ export async function handler(event, context) {
     'Access-Control-Allow-Methods': 'GET,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
+  
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers };
   }
 
-  const projectId = process.env.GCP_PROJECT_ID;
-  const location = process.env.GCP_LOCATION || 'us-central1';
-  const modelId = process.env.GCP_MODEL_ID || 'gemini-2.0-flash-001';
-
-  if (!projectId) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Missing GCP_PROJECT_ID' }) };
+  // Check for required environment variables
+  const geminiApiKey = process.env.VITE_GEMINI_API_KEY;
+  
+  if (!geminiApiKey) {
+    return { 
+      statusCode: 500, 
+      headers, 
+      body: JSON.stringify({ error: 'Missing VITE_GEMINI_API_KEY environment variable' }) 
+    };
   }
 
   try {
+    // Get recipes that need enrichment (no ingredients yet)
     const { data: recipes, error } = await supabase
       .from('recipes')
-      .select('id, title, channel, summary, video_url')
+      .select('id, title, channel, summary, video_url, transcript')
       .is('ingredients', null);
 
     if (error) {
@@ -46,82 +70,88 @@ export async function handler(event, context) {
       return { statusCode: 200, headers, body: JSON.stringify({ status: 'no recipes to enrich' }) };
     }
 
-    const auth = new GoogleAuth({
-      credentials: getGoogleCredentials() || undefined,
-      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-    });
-    const client = await auth.getClient();
-    const apiUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:generateContent`;
-
     let successCount = 0;
+    let errors = [];
 
-    for (const r of recipes) {
-      let videoId = '';
-      if (r.video_url) {
-        const match = r.video_url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
-        videoId = match ? match[1] : r.video_url.slice(-11);
-      }
-
-      let transcript = '';
-      if (videoId) {
-        try {
-          const res = await fetch(`${TRANSCRIPT_API_URL}?video_id=${videoId}`);
-          const data = await res.json();
-          transcript = data.transcript || '';
-          console.log(`🌐 Transcript service response for ${videoId}:`, JSON.stringify(data, null, 2));
-            if (transcript) {
-              console.log(`🗣 Transcript for ${videoId} (first 300 chars):\n${transcript.slice(0, 300)}...`);
-            } else {
-              console.warn(`⚠️ No transcript returned for ${videoId}`);
-            }
-        } catch (e) {
-          console.warn(`Transcript fetch failed for ${videoId}:`, e.message);
+    for (const recipe of recipes) {
+      console.log(`🔄 Processing recipe: "${recipe.title}"`);
+      
+      // Use existing transcript if available, otherwise try to fetch it
+      let transcript = recipe.transcript || '';
+      
+      if (!transcript && recipe.video_url) {
+        let videoId = '';
+        const match = recipe.video_url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
+        videoId = match ? match[1] : recipe.video_url.slice(-11);
+        
+        if (videoId) {
+          try {
+            const res = await fetch(`${TRANSCRIPT_API_URL}?video_id=${videoId}`);
+            const data = await res.json();
+            transcript = data.transcript || '';
+            console.log(`🌐 Fetched transcript for ${videoId} (${transcript.length} chars)`);
+          } catch (e) {
+            console.warn(`⚠️ Transcript fetch failed for ${videoId}:`, e.message);
+          }
         }
       }
 
-      const prompt = `\nExtract the ingredients used in this recipe as a JSON array of strings.\nEach string should be a single ingredient, such as "1 cup flour" or "2 eggs".\n\nTitle: ${r.title}\nChannel: ${r.channel}\nSummary: ${r.summary}
-      ${transcript ? `Transcript: ${transcript}` : ''}`;
+      // Create the prompt for Gemini
+      const prompt = `Extract the ingredients used in this recipe as a JSON array of strings.
+Each string should be a single ingredient with amount, such as "1 cup flour" or "2 eggs".
+Return ONLY the JSON array, nothing else.
 
-      console.log(`📝 Gemini Prompt for recipe ${r.id}:\n${prompt}`);
+Title: ${recipe.title}
+Channel: ${recipe.channel || 'Unknown'}
+${recipe.summary ? `Summary: ${recipe.summary}` : ''}
+${transcript ? `Transcript: ${transcript}` : ''}`;
 
-      let raw;
+      console.log(`📝 Calling Gemini API for recipe ${recipe.id}`);
+
       try {
-        const aiRes = await client.request({
-          url: apiUrl,
-          method: 'POST',
-          data: {
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 256, temperature: 0.2 }
+        // Call the direct Gemini API
+        const response = await callGeminiAPI(prompt, geminiApiKey);
+        console.log(`📨 Gemini response for ${recipe.id}:`, response.substring(0, 200) + '...');
+
+        // Parse the JSON response
+        const jsonText = response.replace(/```json|```/g, '').trim();
+        let ingredients;
+        
+        try {
+          ingredients = JSON.parse(jsonText);
+          if (!Array.isArray(ingredients)) {
+            throw new Error('Response is not an array');
           }
-        });
-        raw = aiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        console.log(`📨 Gemini response for ${r.id}:\n`, raw);
-      } catch (gErr) {
-        console.error(`Gemini error for ${r.id}:`, gErr);
+        } catch (parseError) {
+          const errorMsg = `Parse error for ${recipe.id}: ${parseError.message}`;
+          console.error(`❌ ${errorMsg}`);
+          console.error(`Raw response: ${response}`);
+          errors.push(errorMsg);
+          continue;
+        }
+
+        // Update the recipe with ingredients
+        const { error: updateError } = await supabase
+          .from('recipes')
+          .update({ ingredients: ingredients })
+          .eq('id', recipe.id);
+
+        if (updateError) {
+          const errorMsg = `Database update error for ${recipe.id}: ${updateError.message}`;
+          console.error(`❌ ${errorMsg}`);
+          errors.push(errorMsg);
+          continue;
+        }
+
+        successCount++;
+        console.log(`✅ Successfully enriched "${recipe.title}" with ${ingredients.length} ingredients`);
+
+      } catch (apiError) {
+        const errorMsg = `Gemini API error for ${recipe.id}: ${apiError.message}`;
+        console.error(`❌ ${errorMsg}`);
+        errors.push(errorMsg);
         continue;
       }
-
-      const jsonText = raw.replace(/```json|```/g, '').trim();
-      let arr;
-      try {
-        arr = JSON.parse(jsonText);
-        if (!Array.isArray(arr)) throw new Error('not array');
-      } catch (pErr) {
-        console.error(`Parse fail for ${r.id}:`, pErr);
-        continue;
-      }
-
-      const { error: upErr } = await supabase
-        .from('recipes')
-        .update({ ingredients: arr })
-        .eq('id', r.id);
-
-      if (upErr) {
-        console.error(`Supabase update fail for ${r.id}:`, upErr);
-        continue;
-      }
-
-      successCount += 1;
     }
 
     return {
@@ -130,7 +160,8 @@ export async function handler(event, context) {
       body: JSON.stringify({
         status: 'enriched',
         updated: successCount,
-        skipped: recipes.length - successCount
+        skipped: recipes.length - successCount,
+        errors: errors.length > 0 ? errors : undefined
       }),
     };
 
