@@ -6,31 +6,48 @@ const TRANSCRIPT_API_URL = 'https://transcript-microservice.fly.dev/transcript';
 async function callGeminiAPI(prompt, apiKey) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
   
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [{
-        parts: [{
-          text: prompt
-        }]
-      }],
-      generationConfig: {
-        maxOutputTokens: 512,
-        temperature: 0.2
-      }
-    })
-  });
+  // Create AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: prompt
+          }]
+        }],
+        generationConfig: {
+          maxOutputTokens: 512,
+          temperature: 0.2
+        }
+      })
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+    // Clear timeout on successful fetch
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    if (error.name === 'AbortError') {
+      throw new Error('Gemini API request timed out after 12 seconds');
+    }
+    throw error;
   }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 export async function handler(event, context) {
@@ -91,21 +108,36 @@ export async function handler(event, context) {
         videoId = match ? match[1] : recipe.video_url.slice(-11);
         
         if (videoId) {
+          // Create AbortController for transcript fetch timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+          
           try {
-            const res = await fetch(`${TRANSCRIPT_API_URL}?video_id=${videoId}`);
+            const res = await fetch(`${TRANSCRIPT_API_URL}?video_id=${videoId}`, {
+              signal: controller.signal
+            });
+            
+            // Clear timeout on successful fetch
+            clearTimeout(timeoutId);
             
             if (!res.ok) {
-              console.warn(`⚠️ Transcript fetch failed for ${videoId}: ${res.status} ${res.statusText}`);
-            } else {
-              const data = await res.json();
-              if (data.transcript) {
-                // Cap transcript to 3000 characters (same as transcript-fill.js)
-                transcript = data.transcript.slice(0, 3000);
-                console.log(`🌐 Fetched transcript for ${videoId} (${data.transcript.length} chars, truncated to ${transcript.length})`);
-              }
+              throw new Error(`Transcript fetch failed: ${res.status} ${res.statusText}`);
+            }
+            
+            const data = await res.json();
+            if (data.transcript) {
+              // Cap transcript to 3000 characters (same as transcript-fill.js)
+              transcript = data.transcript.slice(0, 3000);
+              console.log(`🌐 Fetched transcript for ${videoId} (${data.transcript.length} chars, truncated to ${transcript.length})`);
             }
           } catch (e) {
-            console.warn(`⚠️ Transcript fetch failed for ${videoId}:`, e.message);
+            clearTimeout(timeoutId);
+            
+            if (e.name === 'AbortError') {
+              console.warn(`⚠️ Transcript fetch timed out for ${videoId} after 10 seconds`);
+            } else {
+              console.warn(`⚠️ Transcript fetch failed for ${videoId}:`, e.message);
+            }
           }
         }
       }
