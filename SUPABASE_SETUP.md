@@ -341,7 +341,7 @@ SELECT
 FROM recipes;
 
 -- View recent activity
-SELECT action, COUNT(*), MAX(created_at) as last_occurrence
+SELECT action, COUNT(*), MAX("timestamp") as last_occurrence
 FROM events 
 GROUP BY action
 ORDER BY last_occurrence DESC;

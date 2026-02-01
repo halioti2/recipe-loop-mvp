@@ -82,9 +82,9 @@ ALTER TABLE lists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 
 -- Create permissive policies for MVP (adjust for production security needs)
-CREATE POLICY "Allow all operations on recipes" ON recipes FOR ALL USING (true);
-CREATE POLICY "Allow all operations on lists" ON lists FOR ALL USING (true);
-CREATE POLICY "Allow all operations on events" ON events FOR ALL USING (true);
+CREATE POLICY "Allow all operations on recipes" ON recipes FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on lists" ON lists FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on events" ON events FOR ALL USING (true) WITH CHECK (true);
 
 -- =============================================================================
 -- OPTIONAL IMPROVEMENTS

@@ -11,8 +11,18 @@ const { data: recipes, error } = await supabase
   .select('id, title, ingredients, transcript')
   .order('created_at', { ascending: false });
 
+if (error) {
+  console.error('❌ Failed to fetch recipes:', error.message);
+  process.exit(1);
+}
+
+if (!recipes) {
+  console.log('ℹ️  No recipes found');
+  process.exit(0);
+}
+
 console.log('=== ALL RECIPES STATUS ===');
-recipes?.forEach(recipe => {
+recipes.forEach(recipe => {
   const hasIngredients = recipe.ingredients ? '✅' : '❌';
   const hasTranscript = recipe.transcript ? '📝' : '❌';
   console.log(`${hasIngredients} ${hasTranscript} ${recipe.title}`);
