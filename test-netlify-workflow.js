@@ -1,3 +1,26 @@
+/**
+ * NETLIFY WORKFLOW TEST (HTTP)
+ * 
+ * This test verifies the full workflow by making HTTP requests to Netlify Dev server.
+ * It tests the complete integration including HTTP handling, CORS, and responses.
+ * 
+ * HOW TO RUN:
+ * 1. Start Netlify Dev server: netlify dev
+ * 2. In another terminal: NODE_ENV=development node -r dotenv/config test-netlify-workflow.js
+ * 
+ * REQUIREMENTS:
+ * - Netlify Dev server running on http://localhost:8888
+ * - .env file with all required environment variables
+ * - All Netlify functions properly configured
+ * 
+ * WHAT IT TESTS:
+ * - Connectivity function via HTTP
+ * - Sync function via HTTP (YouTube integration)
+ * - Enrich function via HTTP (Gemini integration)
+ * - Recipe data retrieval and formatting
+ * - Null/undefined title handling
+ */
+
 // Test the full workflow using Netlify Dev server
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
@@ -127,11 +150,12 @@ async function checkDatabase() {
     recipes.forEach((recipe, index) => {
       const hasIngredients = recipe.ingredients && recipe.ingredients.length > 0;
       const hasTranscript = recipe.transcript && recipe.transcript.length > 0;
+      const safeTitle = (recipe.title || '').toString();
       
       if (hasIngredients) enrichedCount++;
       if (hasTranscript) transcriptCount++;
       
-      console.log(`  ${index + 1}. ${recipe.title.slice(0, 50)}...`);
+      console.log(`  ${index + 1}. ${safeTitle.slice(0, 50)}...`);
       console.log(`     Channel: ${recipe.channel}`);
       console.log(`     Ingredients: ${hasIngredients ? `✅ ${recipe.ingredients.length} items` : '❌ Not enriched'}`);
       console.log(`     Transcript: ${hasTranscript ? `✅ ${recipe.transcript.length} chars` : '❌ No transcript'}`);

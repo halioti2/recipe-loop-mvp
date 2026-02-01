@@ -13,7 +13,12 @@ const { data: recipes, error } = await supabase
   .is('ingredients', null)
   .limit(1);
 
-if (error || !recipes.length) {
+if (error) {
+  console.error('Error fetching recipes:', error);
+  process.exit(1);
+}
+
+if (!recipes || recipes.length === 0) {
   console.log('No recipes to enrich');
   process.exit(0);
 }

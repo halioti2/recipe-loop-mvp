@@ -1,3 +1,25 @@
+/**
+ * NETLIFY FUNCTIONS TEST
+ * 
+ * This test verifies that Netlify functions (sync and enrich) work correctly
+ * by calling them directly without HTTP requests.
+ * 
+ * HOW TO RUN:
+ * NODE_ENV=development node -r dotenv/config test-functions.js
+ * 
+ * REQUIREMENTS:
+ * - .env file with all required environment variables
+ * - VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY for database
+ * - YOUTUBE_API_KEY for sync function
+ * - GEMINI_API_KEY for enrich function
+ * 
+ * WHAT IT TESTS:
+ * - Database workflow (via imported test)
+ * - Sync function (YouTube API integration)
+ * - Enrich function (Gemini API integration)
+ * - Function error handling and responses
+ */
+
 // Test the sync and enrich functions directly
 import { handler as syncHandler } from './netlify/functions/sync.js';
 import { handler as enrichHandler } from './netlify/functions/enrich.js';
@@ -120,6 +142,6 @@ async function runFullFunctionTest() {
 }
 
 // Load environment and run test
-import('./test-db-workflow.js').then(() => {
-  runFullFunctionTest().catch(console.error);
-});
+const { runWorkflowTest } = await import('./test-db-workflow.js');
+await runWorkflowTest();
+runFullFunctionTest().catch(console.error);
