@@ -4,6 +4,8 @@ import HomePage      from './pages/HomePage';
 import RecipePage    from './pages/RecipePage';
 import ListPage      from './pages/ListPage';
 
+// CodeRabbit updates branch - target for PR testing
+
 export default function App() {
   return (
     <RootLayout>
