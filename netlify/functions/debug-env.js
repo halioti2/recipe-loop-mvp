@@ -9,6 +9,19 @@ export async function handler(event, context) {
     return { statusCode: 200, headers };
   }
 
+  // Access guard: only allow in development or with valid token
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const debugToken = event.headers['x-debug-token'];
+  const validToken = process.env.DEBUG_ENDPOINT_TOKEN;
+  
+  if (!isDevelopment && (!debugToken || debugToken !== validToken)) {
+    return {
+      statusCode: 403,
+      headers,
+      body: JSON.stringify({ error: 'Access denied' }),
+    };
+  }
+
   // Debug environment variables
   const envDebug = {
     NODE_VERSION: process.env.NODE_VERSION,

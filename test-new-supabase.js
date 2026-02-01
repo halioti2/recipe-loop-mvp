@@ -1,3 +1,25 @@
+/**
+ * SUPABASE DATABASE IDENTITY TEST
+ * 
+ * This test verifies that the application is connected to the correct Supabase
+ * database and that basic operations work correctly.
+ * 
+ * HOW TO RUN:
+ * NODE_ENV=development node -r dotenv/config test-new-supabase.js
+ * 
+ * REQUIREMENTS:
+ * - .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+ * - Active Supabase database with proper schema
+ * - Insert permissions on recipes table
+ * 
+ * WHAT IT TESTS:
+ * - Database identity and connection
+ * - Insert operations with RLS guard
+ * - Data retrieval and verification
+ * - Cleanup operations
+ * - Environment configuration display
+ */
+
 // Test if frontend is using the NEW Supabase database
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
@@ -121,6 +143,11 @@ async function testDatabaseIdentity() {
     
     if (insertError) {
       console.error('❌ Could not insert test record:', insertError.message);
+      return false;
+    }
+    
+    if (!insertData || insertData.length === 0) {
+      console.log('❌ Insert returned no rows — possible RLS blocking select', { insertData });
       return false;
     }
     

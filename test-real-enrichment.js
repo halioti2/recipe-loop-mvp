@@ -1,3 +1,28 @@
+/**
+ * REAL GEMINI ENRICHMENT TEST
+ * 
+ * This test verifies that recipe enrichment works with the real Gemini API,
+ * using actual recipes from the database and updating them with ingredients.
+ * 
+ * HOW TO RUN:
+ * NODE_ENV=development node -r dotenv/config test-real-enrichment.js
+ * 
+ * REQUIREMENTS:
+ * - .env file with VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, and GEMINI_API_KEY
+ * - Active Supabase database with recipes that have transcripts but no ingredients
+ * - Valid Gemini API key with sufficient quota
+ * - Update permissions on recipes table
+ * 
+ * WHAT IT TESTS:
+ * - Recipe selection for enrichment
+ * - Gemini API integration with proper prompt formatting
+ * - Ingredient extraction and parsing
+ * - Database updates with JSONB array
+ * - Error handling for API failures
+ * 
+ * NOTE: This test modifies real data in your database!
+ */
+
 // Enhanced enrichment script using direct Gemini API (no Google Auth required)
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
@@ -84,7 +109,7 @@ async function realEnrichment() {
 Each string should be a single ingredient with amount, such as "1 cup flour" or "2 eggs".
 
 Title: ${recipe.title}
-Channel: ${recipe.channel_name}
+Channel: ${recipe.channel}
 Summary: ${recipe.summary || ''}
 Transcript: ${recipe.transcript}
 

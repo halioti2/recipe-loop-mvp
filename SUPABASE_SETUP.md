@@ -152,9 +152,9 @@ ALTER TABLE lists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read/write access (adjust as needed for your security requirements)
-CREATE POLICY "Allow all operations on recipes" ON recipes FOR ALL USING (true);
-CREATE POLICY "Allow all operations on lists" ON lists FOR ALL USING (true);
-CREATE POLICY "Allow all operations on events" ON events FOR ALL USING (true);
+CREATE POLICY "Allow all operations on recipes" ON recipes FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on lists" ON lists FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on events" ON events FOR ALL USING (true) WITH CHECK (true);
 ```
 
 ## Database Functions and Triggers
@@ -213,7 +213,7 @@ For the Netlify Functions, ensure they can:
 ### 2. Recipe Enrichment
 1. `enrich.js` function finds recipes where `ingredients IS NULL`
 2. Fetches transcripts via external API
-3. Uses Google Vertex AI to extract ingredients
+3. Uses Gemini (generativelanguage.googleapis.com) to extract ingredients via the callGeminiAPI function targeting the gemini-2.0-flash model
 4. Updates `recipes.ingredients` with JSONB array
 
 ### 3. Transcript Population

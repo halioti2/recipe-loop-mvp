@@ -1,3 +1,25 @@
+/**
+ * DATABASE WORKFLOW TEST
+ * 
+ * This test verifies the complete database workflow including schema validation,
+ * recipe insertion, grocery list creation, and event tracking.
+ * 
+ * HOW TO RUN:
+ * NODE_ENV=development node -r dotenv/config test-db-workflow.js
+ * 
+ * REQUIREMENTS:
+ * - .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+ * - Active Supabase database with proper schema (recipes, lists, events tables)
+ * - RLS policies configured properly
+ * 
+ * WHAT IT TESTS:
+ * - Database schema validation
+ * - Recipe insertion with RLS guard
+ * - Grocery list workflow
+ * - Event tracking functionality
+ * - Data cleanup
+ */
+
 // Simple Node.js test for the workflow
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
@@ -75,6 +97,11 @@ async function testInsertRecipe() {
     
     if (error) {
       console.error('❌ Recipe insert error:', error.message);
+      return null;
+    }
+    
+    if (!Array.isArray(data) || data.length === 0) {
+      console.log('❌ Insert returned no rows — possible RLS blocking select');
       return null;
     }
     
@@ -229,4 +256,9 @@ async function runWorkflowTest() {
   }
 }
 
-runWorkflowTest().catch(console.error);
+export { runWorkflowTest };
+
+// Run the test if this file is executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runWorkflowTest().catch(console.error);
+}

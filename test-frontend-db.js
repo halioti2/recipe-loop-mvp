@@ -1,3 +1,24 @@
+/**
+ * FRONTEND DATABASE CONNECTION TEST
+ * 
+ * This test verifies that the frontend can connect to Supabase and retrieve data
+ * using the correct column names and environment variables.
+ * 
+ * HOW TO RUN:
+ * NODE_ENV=development node -r dotenv/config test-frontend-db.js
+ * 
+ * REQUIREMENTS:
+ * - .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+ * - Active Supabase database with recipes table
+ * 
+ * WHAT IT TESTS:
+ * - Environment variable loading
+ * - Supabase client creation
+ * - Database connection
+ * - Column name correctness (channel vs channel_name)
+ * - Data retrieval and formatting
+ */
+
 // Test what database the frontend is actually connecting to
 console.log('=== TESTING FRONTEND DATABASE CONNECTION ===');
 
@@ -32,7 +53,7 @@ const client = createClient(supabaseUrl, supabaseKey);
 try {
   const { data: recipes, error } = await client
     .from('recipes')
-    .select('id, title, created_at, channel_name')
+    .select('id, title, created_at, channel')
     .order('created_at', { ascending: false })
     .limit(5);
 
@@ -43,7 +64,7 @@ try {
 
   console.log('=== RECIPES FOUND ===');
   recipes.forEach((recipe, index) => {
-    console.log(`${index + 1}. ${recipe.title} (${recipe.channel_name})`);
+    console.log(`${index + 1}. ${recipe.title} (${recipe.channel})`);
     console.log(`   Created: ${recipe.created_at}`);
     console.log(`   ID: ${recipe.id}`);
     console.log('');

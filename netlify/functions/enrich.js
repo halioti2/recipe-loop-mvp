@@ -74,10 +74,12 @@ export async function handler(event, context) {
 
   try {
     // Get recipes that need enrichment (no ingredients yet)
+    const limit = parseInt(process.env.RECIPE_ENRICH_LIMIT) || 2;
     const { data: recipes, error } = await supabase
       .from('recipes')
       .select('id, title, channel, summary, video_url, transcript')
-      .is('ingredients', null);
+      .is('ingredients', null)
+      .limit(limit);
 
     if (error) {
       return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };

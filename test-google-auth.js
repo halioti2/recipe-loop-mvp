@@ -49,8 +49,8 @@ async function testGoogleAuth() {
   
   console.log('\n✅ Service account JSON parsed successfully');
   console.log(`  Type: ${credentials.type}`);
-  console.log(`  Project ID: ${credentials.project_id}`);
-  console.log(`  Client Email: ${credentials.client_email}`);
+  console.log(`  Project ID: ${credentials.project_id ? credentials.project_id.slice(-4).padStart(credentials.project_id.length, '*') : 'Not set'}`);
+  console.log(`  Client Email: ${credentials.client_email ? credentials.client_email.split('@')[1] : 'Not set'}`);
   
   // Test Google Auth initialization
   try {
