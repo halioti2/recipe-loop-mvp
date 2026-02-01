@@ -11,6 +11,17 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
 
+// Validate environment variables before creating client
+if (!supabaseUrl) {
+  console.error('❌ Missing VITE_SUPABASE_URL environment variable');
+  process.exit(1);
+}
+
+if (!supabaseKey) {
+  console.error('❌ Missing VITE_SUPABASE_ANON_KEY environment variable');
+  process.exit(1);
+}
+
 console.log('Creating client with:');
 console.log('URL:', supabaseUrl);
 console.log('Key:', supabaseKey?.substring(0, 30) + '...');

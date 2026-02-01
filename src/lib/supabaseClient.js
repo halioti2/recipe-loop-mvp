@@ -34,11 +34,13 @@ const getEnv = () => {
 
 const { url: supabaseUrl, key: supabaseKey } = getEnv();
 
-// Add debug logging to see what values are actually being used
-console.log('=== SUPABASE CLIENT DEBUG ===');
-console.log('Supabase URL being used:', supabaseUrl);
-console.log('Supabase Key being used:', supabaseKey?.substring(0, 20) + '...');
-console.log('Environment type:', typeof process !== 'undefined' ? 'Node' : 'Browser');
+// Add debug logging only in development
+if (import.meta.env.DEV) {
+  console.log('=== SUPABASE CLIENT DEBUG ===');
+  console.log('Supabase URL being used:', supabaseUrl);
+  console.log('Supabase Key being used:', supabaseKey?.substring(0, 20) + '...');
+  console.log('Environment type:', typeof process !== 'undefined' ? 'Node' : 'Browser');
+}
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Supabase URL or Key is missing. Check environment variables.');

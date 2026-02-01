@@ -21,7 +21,12 @@ if (error || !recipes.length) {
 const recipe = recipes[0];
 console.log('=== ENRICHING RECIPE ===');
 console.log('Title:', recipe.title);
-console.log('Transcript preview:', recipe.transcript?.substring(0, 200) + '...');
+
+// Safe transcript preview handling
+const transcriptPreview = recipe.transcript 
+  ? recipe.transcript.substring(0, 200) + '...'
+  : '(no transcript available)';
+console.log('Transcript preview:', transcriptPreview);
 
 // Based on the title "The BEST butter chicken ever" and typical butter chicken recipes
 const butterChickenIngredients = [

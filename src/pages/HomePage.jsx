@@ -10,10 +10,11 @@ export default function HomePage() {
   async function fetchRecipes() {
     setLoading(true);
 
-    // Debug: Log what database we're connecting to
-    console.log('=== HOMEPAGE DEBUG ===');
-    console.log('Supabase client URL:', supabase.supabaseUrl);
-    console.log('Environment VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
+    // Debug: Log what database we're connecting to (dev only)
+    if (import.meta.env.DEV) {
+      console.log('=== HOMEPAGE DEBUG ===');
+      console.log('Environment VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
+    }
 
     const { data, error } = await supabase
       .from('recipes')
@@ -21,8 +22,11 @@ export default function HomePage() {
       .order('created_at', { ascending: false }); // 🔄 Newest first
 
     if (data) {
-      console.log('Fetched recipes count:', data.length);
-      console.log('Sample recipe:', data[0]);
+      if (import.meta.env.DEV) {
+        console.log('Fetched recipes count:', data.length);
+        console.log('Sample recipe ID:', data[0]?.id);
+        console.log('Sample recipe title:', data[0]?.title);
+      }
       setRecipes(data);
     }
 

@@ -34,7 +34,7 @@ async function callGeminiAPI(prompt) {
         }]
       }],
       generationConfig: {
-        maxOutputTokens: 256,
+        maxOutputTokens: 1024, // Increased from 256 to prevent truncation
         temperature: 0.2
       }
     })
