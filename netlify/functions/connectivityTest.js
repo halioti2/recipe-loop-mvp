@@ -7,7 +7,7 @@ export const handler = async () => {
   
     // Test Supabase (unauthenticated public ping)
     try {
-      const supaRes = await fetch('https://tvuyhlckthqtoxctxoew.supabase.co/rest/v1/recipes');
+      const supaRes = await fetch('https://yxfjigepxqerdehmshdl.supabase.co/rest/v1/recipes');
       responses.supabase = `Supabase responded with status ${supaRes.status}`;
     } catch (err) {
       responses.errors.supabase = err.message;

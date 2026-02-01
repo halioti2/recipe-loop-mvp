@@ -1,3 +1,8 @@
+/*
+ * Recipe Loop MVP - Main Application Component
+ * Testing CodeRabbit analysis capability
+ * YouTube recipe aggregation with AI-powered ingredient extraction
+ */
 import { Routes, Route } from 'react-router-dom';
 import RootLayout from './src/layouts/RootLayout';
 import HomePage from './src/pages/HomePage.jsx';
