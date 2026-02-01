@@ -34,13 +34,7 @@ const getEnv = () => {
 
 const { url: supabaseUrl, key: supabaseKey } = getEnv();
 
-// Add debug logging only in development
-if (import.meta.env.DEV) {
-  console.log('=== SUPABASE CLIENT DEBUG ===');
-  console.log('Supabase URL being used:', supabaseUrl);
-  console.log('Supabase Key being used:', supabaseKey?.substring(0, 20) + '...');
-  console.log('Environment type:', typeof process !== 'undefined' ? 'Node' : 'Browser');
-}
+// Debug logging removed to prevent issues in Node.js environments
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Supabase URL or Key is missing. Check environment variables.');
