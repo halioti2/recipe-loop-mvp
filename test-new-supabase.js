@@ -41,7 +41,8 @@ async function testNewDatabase() {
     if (recipes.length > 0) {
       console.log('📋 Recent recipes:');
       recipes.forEach((recipe, index) => {
-        console.log(`  ${index + 1}. ${recipe.title.slice(0, 60)}...`);
+        const safeTitle = recipe.title ? String(recipe.title).slice(0, 60) : '(untitled)';
+        console.log(`  ${index + 1}. ${safeTitle}...`);
         console.log(`     Created: ${new Date(recipe.created_at).toLocaleString()}`);
         console.log(`     URL: ${recipe.video_url}`);
       });
@@ -142,10 +143,15 @@ async function testDatabaseIdentity() {
     console.log(`   Created: ${new Date(readData.created_at).toLocaleString()}`);
     
     // Clean up - delete the test record
-    await supabase
+    const { data: deleteData, error: deleteError } = await supabase
       .from('recipes')
       .delete()
       .eq('id', readData.id);
+    
+    if (deleteError) {
+      console.error('❌ Failed to delete test record:', deleteError.message);
+      return false;
+    }
     
     console.log('✅ Test record cleaned up');
     

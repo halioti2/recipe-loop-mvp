@@ -92,6 +92,15 @@ async function testTranscriptFill() {
 async function checkDatabase() {
   console.log('\n📊 Checking database state...');
   
+  // Validate required environment variables
+  if (!process.env.VITE_SUPABASE_URL) {
+    throw new Error('❌ Missing VITE_SUPABASE_URL environment variable');
+  }
+  
+  if (!process.env.VITE_SUPABASE_ANON_KEY) {
+    throw new Error('❌ Missing VITE_SUPABASE_ANON_KEY environment variable');
+  }
+  
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(

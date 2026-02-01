@@ -102,15 +102,17 @@ async function testGroceryList() {
       .insert([{
         recipe_id: recipe.id,
         ingredients: recipe.ingredients
-      }]);
-    
+      }])
+      .select();
+
     if (insertError) {
       console.error('❌ Grocery list insert error:', insertError.message);
       return false;
     }
     
+    const insertedListId = listInsert[0]?.id;
     console.log('✅ Successfully added recipe to grocery list');
-    
+
     // Query grocery list
     const { data: lists, error: listsError } = await supabase
       .from('lists')
@@ -121,17 +123,35 @@ async function testGroceryList() {
       `)
       .order('created_at', { ascending: false })
       .limit(3);
-    
+
     if (listsError) {
       console.error('❌ Grocery list query error:', listsError.message);
+      // Still attempt cleanup even if query failed
+      if (insertedListId) {
+        await supabase.from('lists').delete().eq('id', insertedListId);
+      }
       return false;
     }
-    
+
     console.log(`✅ Found ${lists.length} items in grocery list`);
     lists.forEach(item => {
       console.log(`  - ${item.recipes?.title}: ${item.ingredients?.length || 0} ingredients`);
     });
     
+    // Clean up - delete the test list item
+    if (insertedListId) {
+      const { error: deleteError } = await supabase
+        .from('lists')
+        .delete()
+        .eq('id', insertedListId);
+        
+      if (deleteError) {
+        console.error('❌ Failed to cleanup test list item:', deleteError.message);
+        return false;
+      }
+      console.log('✅ Test list item cleaned up');
+    }
+
     return true;
   } catch (error) {
     console.error('❌ Grocery list test error:', error.message);
