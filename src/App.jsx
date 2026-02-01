@@ -16,5 +16,3 @@ export default function App() {
   );
 }
 
-// CodeRabbit test change for PR
-
