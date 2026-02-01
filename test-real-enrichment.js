@@ -8,11 +8,11 @@ console.log('=== REAL GEMINI ENRICHMENT TEST ===');
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
-const geminiKey = process.env.VITE_GEMINI_API_KEY;
+const geminiKey = process.env.GEMINI_API_KEY;
 
 if (!supabaseUrl || !supabaseKey || !geminiKey) {
   console.error('Missing required environment variables');
-  console.error('Need: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_GEMINI_API_KEY');
+  console.error('Need: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, GEMINI_API_KEY');
   process.exit(1);
 }
 

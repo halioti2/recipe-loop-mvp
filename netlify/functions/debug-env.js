@@ -16,7 +16,7 @@ export async function handler(event, context) {
     VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY ? 'Present' : 'Missing',
     GCP_SERVICE_ACCOUNT_JSON: process.env.GCP_SERVICE_ACCOUNT_JSON ? 'Present' : 'Missing',
     GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS || 'Not set',
-    VITE_GEMINI_API_KEY: process.env.VITE_GEMINI_API_KEY ? 'Present' : 'Missing',
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY ? 'Present' : 'Missing',
     GCP_PROJECT_ID: process.env.GCP_PROJECT_ID || 'Not set',
   };
 

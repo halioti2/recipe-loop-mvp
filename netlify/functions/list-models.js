@@ -9,7 +9,7 @@ export async function handler(event, context) {
     return { statusCode: 200, headers };
   }
 
-  const apiKey = process.env.VITE_GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   
   if (!apiKey) {
     return { 

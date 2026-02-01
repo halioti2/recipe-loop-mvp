@@ -45,13 +45,13 @@ export async function handler(event, context) {
   }
 
   // Check for required environment variables
-  const geminiApiKey = process.env.VITE_GEMINI_API_KEY;
+  const geminiApiKey = process.env.GEMINI_API_KEY;
   
   if (!geminiApiKey) {
     return { 
       statusCode: 500, 
       headers, 
-      body: JSON.stringify({ error: 'Missing VITE_GEMINI_API_KEY environment variable' }) 
+      body: JSON.stringify({ error: 'Missing GEMINI_API_KEY environment variable' }) 
     };
   }
 
