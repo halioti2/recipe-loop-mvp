@@ -79,6 +79,12 @@ export async function handler(event, context) {
       // Use existing transcript if available, otherwise try to fetch it
       let transcript = recipe.transcript || '';
       
+      // Ensure transcript is capped at 3000 characters for consistency
+      if (transcript && transcript.length > 3000) {
+        transcript = transcript.slice(0, 3000);
+        console.log(`📏 Truncated existing transcript to 3000 characters for "${recipe.title}"`);
+      }
+      
       if (!transcript && recipe.video_url) {
         let videoId = '';
         const match = recipe.video_url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
@@ -87,9 +93,17 @@ export async function handler(event, context) {
         if (videoId) {
           try {
             const res = await fetch(`${TRANSCRIPT_API_URL}?video_id=${videoId}`);
-            const data = await res.json();
-            transcript = data.transcript || '';
-            console.log(`🌐 Fetched transcript for ${videoId} (${transcript.length} chars)`);
+            
+            if (!res.ok) {
+              console.warn(`⚠️ Transcript fetch failed for ${videoId}: ${res.status} ${res.statusText}`);
+            } else {
+              const data = await res.json();
+              if (data.transcript) {
+                // Cap transcript to 3000 characters (same as transcript-fill.js)
+                transcript = data.transcript.slice(0, 3000);
+                console.log(`🌐 Fetched transcript for ${videoId} (${data.transcript.length} chars, truncated to ${transcript.length})`);
+              }
+            }
           } catch (e) {
             console.warn(`⚠️ Transcript fetch failed for ${videoId}:`, e.message);
           }
