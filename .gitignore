@@ -27,6 +27,15 @@ dist-ssr
 .env.local
 .env
 
+# Database files and dumps
+*.sql.backup
+*.dump
+*.backup
+db_backup_*
+
+# Schema files and database documentation
+schema/
+
 # Local Netlify folder
 .netlify
 

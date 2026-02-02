@@ -2,54 +2,85 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 
-export default function HomePage() {
+// Temporary version for testing multi-user functionality
+// Shows recipes that the user has added to their lists
+export default function HomePageTest() {
   const [loading, setLoading] = useState(true);
   const [recipes, setRecipes] = useState([]);
+  const [userLists, setUserLists] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [resyncing, setResyncing] = useState(false);
   const { user } = useAuth();
 
-  async function fetchRecipes() {
+  // For testing - using your actual user ID from the database
+  const testUserId = '88274763-038b-419a-81f9-da2db472cf31'; // ethan.davey@pursuit.org
+  const currentUserId = user?.id || testUserId; // Use test ID if no user logged in
+
+  async function fetchUserRecipes() {
     setLoading(true);
 
-    // Debug: Log what database we're connecting to (dev only)
     if (import.meta.env.DEV) {
-      console.log('=== HOMEPAGE DEBUG ===');
-      console.log('Environment VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
-      console.log('Current user:', user?.id);
+      console.log('=== HOMEPAGE TEST DEBUG ===');
+      console.log('Current user ID:', currentUserId);
+      console.log('Actual user:', user?.email);
     }
 
-    const { data, error } = await supabase
-      .from('recipes')
-      .select('*')
-      .eq('user_id', user?.id)
-      .order('created_at', { ascending: false }); // 🔄 Newest first
+    // Get recipes through the user's lists (since recipes table doesn't have user_id yet)
+    const { data: listsData, error: listsError } = await supabase
+      .from('lists')
+      .select(`
+        id,
+        recipe_id,
+        ingredients,
+        recipes (
+          id,
+          title,
+          video_url,
+          channel,
+          summary,
+          ingredients,
+          created_at
+        )
+      `)
+      .eq('user_id', currentUserId)
+      .order('created_at', { ascending: false });
 
-    if (data) {
+    if (listsError) {
+      console.error('❌ Error fetching user lists:', listsError);
+      setLoading(false);
+      return;
+    }
+
+    if (listsData) {
+      setUserLists(listsData);
+      // Extract unique recipes from the user's lists
+      const uniqueRecipes = [];
+      const seenRecipeIds = new Set();
+      
+      listsData.forEach(list => {
+        if (list.recipes && !seenRecipeIds.has(list.recipes.id)) {
+          uniqueRecipes.push(list.recipes);
+          seenRecipeIds.add(list.recipes.id);
+        }
+      });
+      
+      setRecipes(uniqueRecipes);
+      
       if (import.meta.env.DEV) {
-        console.log('Fetched recipes count:', data.length);
-        console.log('Sample recipe ID:', data[0]?.id);
-        console.log('Sample recipe title:', data[0]?.title);
+        console.log('Found lists:', listsData.length);
+        console.log('Unique recipes:', uniqueRecipes.length);
       }
-      setRecipes(data);
-    }
-
-    if (error) {
-      console.error('❌ Fetch error:', error);
     }
 
     setLoading(false);
   }
 
   useEffect(() => {
-    if (user) {
-      fetchRecipes();
-    }
-  }, [user]);
+    fetchUserRecipes();
+  }, [currentUserId]);
 
   async function handleResync() {
     setResyncing(true);
-
     try {
       const syncResponse = await fetch('/.netlify/functions/sync');
       const syncResult = await syncResponse.json();
@@ -67,47 +98,30 @@ export default function HomePage() {
       console.error('❌ Resync error:', err);
       alert('Something went wrong during resync.');
     }
-
     setResyncing(false);
   }
 
   async function handleAddToGroceryList(e, recipe) {
     e.stopPropagation();
-
-    if (!user) {
-      alert('Please log in to add to grocery list');
+    
+    // Check if already in lists
+    const existingList = userLists.find(list => list.recipe_id === recipe.id);
+    if (existingList) {
+      alert('Already in your grocery lists!');
       return;
     }
 
     try {
-      const { data: existing, error: checkError } = await supabase
-        .from('lists')
-        .select('id')
-        .eq('recipe_id', recipe.id)
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (checkError) {
-        console.error('❌ Error checking lists:', checkError);
-        alert('Something went wrong. Try again.');
-        return;
-      }
-
-      if (existing) {
-        alert('Already added.');
-        return;
-      }
-
-      const { error: insertError } = await supabase
+      const { error } = await supabase
         .from('lists')
         .insert([{ 
           recipe_id: recipe.id, 
           ingredients: recipe.ingredients || [],
-          user_id: user.id
+          user_id: currentUserId
         }]);
 
-      if (insertError) {
-        console.error('❌ Error inserting into lists:', insertError);
+      if (error) {
+        console.error('❌ Error adding to list:', error);
         alert('Something went wrong. Try again.');
         return;
       }
@@ -116,11 +130,12 @@ export default function HomePage() {
         { 
           action: 'add_to_grocery_list', 
           recipe_id: recipe.id,
-          user_id: user.id
+          user_id: currentUserId
         }
       ]);
 
-      alert('Groceries added.');
+      alert('Added to grocery list!');
+      fetchUserRecipes(); // Refresh to show updated state
     } catch (err) {
       console.error('❌ Unexpected error:', err);
       alert('Something went wrong.');
@@ -131,15 +146,29 @@ export default function HomePage() {
     <div className="max-w-4xl mx-auto px-4 py-8">
       {/* Welcome section */}
       <div className="mb-8">
+        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+          <div className="flex">
+            <div className="ml-3">
+              <p className="text-sm text-blue-700">
+                <strong>🧪 Testing Multi-User Mode</strong><br/>
+                This page shows recipes from your grocery lists (user-specific data).
+                {user ? ` Logged in as: ${user.email}` : ' Using test user ID for demo.'}
+                <br/>
+                <strong>Current User ID:</strong> <code className="text-xs">{currentUserId}</code>
+              </p>
+            </div>
+          </div>
+        </div>
+        
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Welcome back, {user?.email?.split('@')[0] || 'Chef'}!
+          Your Recipe Collection
         </h1>
         <p className="text-gray-600">
-          Your personalized recipe collection and grocery lists await.
+          Recipes you've added to your grocery lists
         </p>
       </div>
 
-      {/* Always show sync button */}
+      {/* Sync button */}
       <button
         onClick={handleResync}
         disabled={resyncing}
@@ -149,8 +178,6 @@ export default function HomePage() {
       >
         {resyncing ? 'Resyncing…' : 'Resync & Enrich'}
       </button>
-
-      <h2 className="text-2xl font-bold mb-6">Your Saved Recipes</h2>
 
       {loading ? (
         <div className="text-center py-8">
@@ -164,9 +191,9 @@ export default function HomePage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No recipes yet</h3>
-          <p className="text-gray-600 mb-4">Start building your collection by syncing with YouTube!</p>
-          <p className="text-sm text-gray-500">Click the "Resync & Enrich" button above to get started.</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No recipes in your collection yet</h3>
+          <p className="text-gray-600 mb-4">Add some recipes to your grocery lists to see them here!</p>
+          <p className="text-sm text-gray-500">Note: This test version only shows recipes you've added to lists.</p>
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -174,6 +201,7 @@ export default function HomePage() {
             const videoId = recipe.video_url?.split('v=')[1];
             const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
             const isExpanded = expandedId === recipe.id;
+            const inList = userLists.find(list => list.recipe_id === recipe.id);
 
             return (
               <div
@@ -190,7 +218,15 @@ export default function HomePage() {
                 </div>
 
                 <div className="p-4">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">{recipe.title}</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-semibold text-gray-900">{recipe.title}</h3>
+                    {inList && (
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                        In List
+                      </span>
+                    )}
+                  </div>
+                  
                   <p className="text-sm text-gray-600 mb-3">Channel: {recipe.channel}</p>
 
                   {isExpanded && (
@@ -212,14 +248,29 @@ export default function HomePage() {
 
                   <button
                     onClick={(e) => handleAddToGroceryList(e, recipe)}
-                    className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                    disabled={!!inList}
+                    className={`mt-4 w-full px-4 py-2 rounded-lg text-sm font-medium ${
+                      inList 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    }`}
                   >
-                    Add to Grocery List
+                    {inList ? 'Already in List' : 'Add to Grocery List'}
                   </button>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Debug info */}
+      {import.meta.env.DEV && (
+        <div className="mt-8 p-4 bg-gray-100 rounded-lg text-xs">
+          <h4 className="font-medium mb-2">Debug Info:</h4>
+          <p>User Lists: {userLists.length}</p>
+          <p>Unique Recipes: {recipes.length}</p>
+          <p>Current User ID: {currentUserId}</p>
         </div>
       )}
     </div>
