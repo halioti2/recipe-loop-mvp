@@ -4,35 +4,56 @@ import { YouTubeService, YouTubeAPIError } from '../services/youtubeService';
 import { supabase } from '../lib/supabaseClient';
 
 export default function PlaylistDiscoveryPage() {
-  const { getYouTubeToken, user, hasYouTubeAccess } = useAuth();
+  const { getYouTubeToken, user, hasYouTubeAccess, signOut, signInWithGoogle } = useAuth();
   const [playlists, setPlaylists] = useState([]);
   const [connectedPlaylists, setConnectedPlaylists] = useState(new Set());
+  const [playlistMapping, setPlaylistMapping] = useState(new Map()); // YouTube ID -> Database UUID
   const [syncingPlaylists, setSyncingPlaylists] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(new Set());
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [channelInfo, setChannelInfo] = useState(null);
+  const [tokenStatus, setTokenStatus] = useState('checking'); // 'checking', 'available', 'unavailable'
 
   useEffect(() => {
     if (hasYouTubeAccess()) {
-      fetchData();
+      checkTokenAndFetchData();
     } else {
       setError('YouTube access not available. Please sign in with Google.');
       setLoading(false);
     }
   }, [user]);
 
-  const fetchData = async () => {
+  const checkTokenAndFetchData = async () => {
     try {
       setLoading(true);
       setError(null);
+      setTokenStatus('checking');
 
       const token = await getYouTubeToken();
       if (!token) {
-        throw new Error('No YouTube access token available. Try signing out and signing back in.');
+        setTokenStatus('unavailable');
+        setError(
+          'YouTube access token unavailable. This happens after page refresh due to Supabase OAuth limitations.'
+        );
+        setLoading(false);
+        return;
       }
 
+      setTokenStatus('available');
+      await fetchData(token);
+      
+    } catch (err) {
+      console.error('Token check failed:', err);
+      setTokenStatus('unavailable');
+      setError(err.message || 'Failed to access YouTube API');
+      setLoading(false);
+    }
+  };
+
+  const fetchData = async (token) => {
+    try {
       const youtubeService = new YouTubeService(token);
       
       // Fetch user's playlists and channel info in parallel
@@ -45,9 +66,24 @@ export default function PlaylistDiscoveryPage() {
       setPlaylists(userPlaylists);
       setChannelInfo(channel);
       setConnectedPlaylists(new Set(existingPlaylists.map(p => p.youtube_playlist_id)));
+      // Build mapping from YouTube playlist ID to database UUID
+      const mapping = new Map();
+      existingPlaylists.forEach(p => {
+        mapping.set(p.youtube_playlist_id, p.id);
+      });
+      setPlaylistMapping(mapping);
+      setTokenStatus('available');
+      
     } catch (err) {
       console.error('Failed to fetch YouTube data:', err);
-      setError(err.message || 'Failed to load your YouTube playlists');
+      
+      // Check if it's a token issue
+      if (err.message.includes('403') || err.message.includes('401')) {
+        setTokenStatus('unavailable');
+        setError('YouTube API access denied. Please re-authenticate with Google.');
+      } else {
+        setError(err.message || 'Failed to load your YouTube playlists');
+      }
     } finally {
       setLoading(false);
     }
@@ -56,7 +92,7 @@ export default function PlaylistDiscoveryPage() {
   const fetchConnectedPlaylists = async () => {
     const { data, error } = await supabase
       .from('user_playlists')
-      .select('youtube_playlist_id')
+      .select('id, youtube_playlist_id')
       .eq('user_id', user.id);
 
     if (error) {
@@ -65,6 +101,31 @@ export default function PlaylistDiscoveryPage() {
     }
 
     return data || [];
+  };
+
+  const handleReAuthenticate = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Sign out and redirect to re-auth
+      await signOut();
+      
+      // Redirect to login or trigger Google sign-in
+      const { error } = await signInWithGoogle();
+      if (error) {
+        throw error;
+      }
+      
+    } catch (err) {
+      console.error('Re-authentication failed:', err);
+      setError(`Re-authentication failed: ${err.message}`);
+      setLoading(false);
+    }
+  };
+
+  const handleRetryToken = async () => {
+    await checkTokenAndFetchData();
   };
 
   const handleConnectPlaylist = async (playlist) => {
@@ -76,7 +137,7 @@ export default function PlaylistDiscoveryPage() {
 
     try {
       // Save playlist to database
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('user_playlists')
         .insert({
           user_id: user.id,
@@ -86,7 +147,9 @@ export default function PlaylistDiscoveryPage() {
           thumbnail_url: playlist.snippet.thumbnails?.high?.url || playlist.snippet.thumbnails?.medium?.url,
           video_count: playlist.contentDetails?.itemCount || 0,
           sync_enabled: true
-        });
+        })
+        .select('id')
+        .single();
 
       if (error) {
         if (error.code === '23505') { // Unique constraint violation
@@ -96,6 +159,7 @@ export default function PlaylistDiscoveryPage() {
       }
 
       setConnectedPlaylists(prev => new Set([...prev, playlistId]));
+      setPlaylistMapping(prev => new Map(prev).set(playlistId, data.id));
       
       // Optional: Show success message
       console.log(`✅ Connected playlist: ${playlist.snippet.title}`);
@@ -122,7 +186,8 @@ export default function PlaylistDiscoveryPage() {
     try {
       const token = await getYouTubeToken();
       if (!token) {
-        throw new Error('No YouTube access token available. Try signing out and signing back in.');
+        setTokenStatus('unavailable');
+        throw new Error('YouTube access token unavailable for sync.');
       }
 
       // Call the Phase 2.3 smart playlist sync function
@@ -150,10 +215,16 @@ export default function PlaylistDiscoveryPage() {
       );
       
       // Refresh the data to show updated sync status
-      await fetchData();
+      await checkTokenAndFetchData();
       
     } catch (err) {
       console.error('Sync failed:', err);
+      
+      // Check if it's a token issue
+      if (err.message.includes('token') || err.message.includes('401') || err.message.includes('403')) {
+        setTokenStatus('unavailable');
+      }
+      
       setError(`Sync failed: ${err.message}`);
     } finally {
       setSyncingPlaylists(prev => {
@@ -183,6 +254,12 @@ export default function PlaylistDiscoveryPage() {
         newSet.delete(playlistId);
         return newSet;
       });
+      
+      setPlaylistMapping(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(playlistId);
+        return newMap;
+      });
 
       console.log('✅ Disconnected playlist');
       
@@ -203,29 +280,63 @@ export default function PlaylistDiscoveryPage() {
       <div className="max-w-4xl mx-auto p-8">
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-3 text-gray-600">Loading your YouTube playlists...</span>
+          <span className="ml-3 text-gray-600">
+            {tokenStatus === 'checking' ? 'Checking YouTube access...' : 'Loading your YouTube playlists...'}
+          </span>
         </div>
       </div>
     );
   }
 
   if (error) {
+    const isTokenError = error.includes('access token unavailable') || error.includes('YouTube access token');
+    
     return (
       <div className="max-w-4xl mx-auto p-8">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
           <h3 className="text-lg font-medium text-red-800 mb-2">Unable to Load Playlists</h3>
           <p className="text-red-700 mb-4">{error}</p>
-          <div className="space-y-2 text-sm text-red-600">
-            <p>• Make sure you signed in with Google (not email/password)</p>
-            <p>• Try signing out and signing back in with Google</p>
-            <p>• Check that YouTube permissions were granted during sign-in</p>
-          </div>
-          <button
-            onClick={fetchData}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-          >
-            Try Again
-          </button>
+          
+          {isTokenError ? (
+            <div className="space-y-3">
+              <div className="text-sm text-red-600 space-y-1">
+                <p><strong>This is a known limitation:</strong> YouTube tokens expire after page refresh due to Supabase OAuth implementation.</p>
+                <p>• Make sure you signed in with Google (not email/password)</p>
+                <p>• YouTube permissions were granted during sign-in</p>
+              </div>
+              
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={async () => {
+                    await signOut();
+                    window.location.href = '/login';
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Sign Out & Re-authenticate
+                </button>
+                
+                <button
+                  onClick={fetchData}
+                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                >
+                  Try Again
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2 text-sm text-red-600">
+              <p>• Make sure you signed in with Google (not email/password)</p>
+              <p>• Try signing out and signing back in with Google</p>
+              <p>• Check that YouTube permissions were granted during sign-in</p>
+              <button
+                onClick={fetchData}
+                className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Try Again
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -242,13 +353,26 @@ export default function PlaylistDiscoveryPage() {
               <path d="M9.545 15.568V8.432l6.364 3.568z"/>
             </svg>
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-bold text-gray-900">YouTube Playlists</h1>
             {channelInfo && (
               <p className="text-gray-600">
                 Connected to: <span className="font-medium">{channelInfo.snippet.title}</span>
               </p>
             )}
+            {/* Token Status Indicator */}
+            <div className="mt-2 flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${
+                tokenStatus === 'available' ? 'bg-green-500' : 
+                tokenStatus === 'checking' ? 'bg-yellow-500' : 'bg-red-500'
+              }`}></div>
+              <span className="text-sm text-gray-600">
+                YouTube API: {
+                  tokenStatus === 'available' ? 'Connected' : 
+                  tokenStatus === 'checking' ? 'Checking...' : 'Disconnected'
+                }
+              </span>
+            </div>
           </div>
         </div>
         <p className="text-gray-600">
@@ -256,6 +380,44 @@ export default function PlaylistDiscoveryPage() {
           Only connected playlists will be scanned for new recipes.
         </p>
       </div>
+
+      {/* Enhanced Token Error Display */}
+      {tokenStatus === 'unavailable' && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
+          <h3 className="text-lg font-semibold text-red-800 mb-2">
+            YouTube Access Token Issue
+          </h3>
+          <p className="text-red-700 mb-4">
+            {error || 'YouTube access token is unavailable. This happens after page refresh due to Supabase OAuth limitations.'}
+          </p>
+          
+          <div className="bg-yellow-50 border border-yellow-200 rounded p-4 mb-4">
+            <h4 className="font-semibold text-yellow-800">Why this happens:</h4>
+            <ul className="text-yellow-700 text-sm mt-1 space-y-1">
+              <li>• OAuth tokens are only available immediately after Google sign-in</li>
+              <li>• Page refresh causes token loss (Supabase limitation)</li>
+              <li>• YouTube API requires fresh tokens for playlist access</li>
+              <li>• Enhanced token persistence is now active to minimize this issue</li>
+            </ul>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleReAuthenticate}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors font-medium"
+            >
+              🔄 Sign Out & Re-authenticate with Google
+            </button>
+            
+            <button
+              onClick={handleRetryToken}
+              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors font-medium"
+            >
+              🔄 Retry Token Access
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Success/Error Messages */}
       {(successMessage || error) && (
@@ -351,8 +513,8 @@ export default function PlaylistDiscoveryPage() {
             const isLoading = connecting.has(playlist.id);
             const isSyncing = syncingPlaylists.has(playlist.id);
             
-            // Get user playlist ID for connected playlists
-            const userPlaylistId = connectedPlaylists.get?.(playlist.id) || playlist.id;
+            // Get user playlist ID for connected playlists  
+            const userPlaylistId = playlistMapping.get(playlist.id);
             
             return (
               <div

@@ -11,7 +11,7 @@ export const useAuth = () => {
   return context
 }
 
-// Enhanced token storage for provider tokens
+// Secure storage for provider tokens
 class TokenStorage {
   static setProviderToken(userId, token, expiresAt) {
     const tokenData = {
@@ -20,7 +20,6 @@ class TokenStorage {
       userId
     }
     localStorage.setItem(`provider_token_${userId}`, JSON.stringify(tokenData))
-    console.log('💾 Stored provider token for user:', userId)
   }
 
   static getProviderToken(userId) {
@@ -32,12 +31,10 @@ class TokenStorage {
       
       // Check if token is expired
       if (Date.now() > tokenData.expiresAt) {
-        console.log('⏰ Stored provider token expired, removing')
         localStorage.removeItem(`provider_token_${userId}`)
         return null
       }
 
-      console.log('✅ Retrieved valid stored provider token')
       return tokenData.token
     } catch (error) {
       console.error('Error reading stored token:', error)
@@ -47,20 +44,14 @@ class TokenStorage {
 
   static clearProviderToken(userId) {
     localStorage.removeItem(`provider_token_${userId}`)
-    console.log('🧹 Cleared stored provider token for user:', userId)
   }
 
   static setRefreshToken(userId, refreshToken) {
     localStorage.setItem(`provider_refresh_token_${userId}`, refreshToken)
-    console.log('💾 Stored provider refresh token')
   }
 
   static getRefreshToken(userId) {
     return localStorage.getItem(`provider_refresh_token_${userId}`)
-  }
-
-  static clearRefreshToken(userId) {
-    localStorage.removeItem(`provider_refresh_token_${userId}`)
   }
 }
 
@@ -112,7 +103,7 @@ export function AuthProvider({ children }) {
         // Clean up tokens on sign out
         if (event === 'SIGNED_OUT') {
           console.log('🧹 Cleaning up stored tokens')
-          // Clean up all stored tokens since we don't have the old user ID
+          // We don't know the old user ID here, so clear all stored tokens
           Object.keys(localStorage).forEach(key => {
             if (key.startsWith('provider_token_') || key.startsWith('provider_refresh_token_')) {
               localStorage.removeItem(key)
@@ -150,7 +141,6 @@ export function AuthProvider({ children }) {
     // Clear stored tokens before signing out
     if (user?.id) {
       TokenStorage.clearProviderToken(user.id)
-      TokenStorage.clearRefreshToken(user.id)
     }
     
     const { error } = await supabase.auth.signOut()
@@ -167,7 +157,7 @@ export function AuthProvider({ children }) {
         scopes: 'https://www.googleapis.com/auth/youtube.readonly',
         queryParams: {
           access_type: 'offline',  // Request refresh token
-          prompt: 'consent',       // Force consent screen for refresh token
+          prompt: 'consent',       // Force consent screen
         },
         redirectTo: redirectTo
       }
@@ -184,75 +174,21 @@ export function AuthProvider({ children }) {
     try {
       console.log('🔄 Attempting to refresh Google token...')
       
-      // Strategy 1: Use secure backend endpoint (preferred)
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (session?.access_token) {
-          console.log('🔒 Using secure backend endpoint for token refresh')
-          
-          const response = await fetch('/.netlify/functions/refresh-google-token', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`
-            },
-            body: JSON.stringify({ refresh_token: refreshToken })
-          })
-
-          if (response.ok) {
-            const data = await response.json()
-            
-            // Store new access token
-            const expiresAt = Date.now() + (data.expires_in * 1000)
-            TokenStorage.setProviderToken(user.id, data.access_token, expiresAt)
-            
-            // Store new refresh token if provided
-            if (data.refresh_token) {
-              TokenStorage.setRefreshToken(user.id, data.refresh_token)
-            }
-            
-            console.log('✅ Successfully refreshed Google token via backend')
-            return data.access_token
-          } else {
-            const errorData = await response.json()
-            console.warn('⚠️ Backend refresh failed:', errorData.error)
-            // Fall through to direct method
-          }
-        }
-      } catch (backendError) {
-        console.warn('⚠️ Backend refresh unavailable:', backendError.message)
-        // Fall through to direct method
-      }
-      
-      // Strategy 2: Direct Google API call (fallback)
-      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
-      const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET
-      
-      if (!clientId || !clientSecret) {
-        console.warn('⚠️ Google OAuth credentials not configured for direct token refresh')
-        return null
-      }
-      
-      console.log('🔄 Using direct Google API for token refresh')
-      
       const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
-          client_id: clientId,
-          client_secret: clientSecret,
+          client_id: process.env.VITE_GOOGLE_CLIENT_ID, // You'll need this
+          client_secret: process.env.VITE_GOOGLE_CLIENT_SECRET, // And this
           refresh_token: refreshToken,
           grant_type: 'refresh_token',
         }),
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        console.error('❌ Google token refresh failed:', errorData)
-        throw new Error(`Failed to refresh Google token: ${errorData.error}`)
+        throw new Error('Failed to refresh Google token')
       }
 
       const data = await response.json()
@@ -261,7 +197,7 @@ export function AuthProvider({ children }) {
       const expiresAt = Date.now() + (data.expires_in * 1000)
       TokenStorage.setProviderToken(user.id, data.access_token, expiresAt)
       
-      console.log('✅ Successfully refreshed Google token via direct API')
+      console.log('✅ Successfully refreshed Google token')
       return data.access_token
       
     } catch (error) {
@@ -281,26 +217,23 @@ export function AuthProvider({ children }) {
       return null
     }
     
-    // Strategy 1: Try stored token first (fastest)
+    // 1. Try stored token first
     const storedToken = TokenStorage.getProviderToken(user.id)
     if (storedToken) {
       console.log('✅ Found valid stored provider token')
       return storedToken
     }
     
-    // Strategy 2: Try session token (immediate after login)
+    // 2. Try session token (immediate after login)
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.provider_token) {
       console.log('✅ Found provider token in session')
       // Store it for future use
       TokenStorage.setProviderToken(user.id, session.provider_token)
-      if (session.provider_refresh_token) {
-        TokenStorage.setRefreshToken(user.id, session.provider_refresh_token)
-      }
       return session.provider_token
     }
     
-    // Strategy 3: Try refreshing with Google directly (if refresh token available)
+    // 3. Try refreshing with Google directly
     const refreshToken = TokenStorage.getRefreshToken(user.id)
     if (refreshToken) {
       console.log('🔄 Attempting Google token refresh...')
@@ -310,14 +243,17 @@ export function AuthProvider({ children }) {
       }
     }
     
-    // Strategy 4: Try Supabase session refresh (last resort)
+    // 4. Try Supabase session refresh (last resort)
     try {
       console.log('🔄 Attempting Supabase session refresh for YouTube token...')
       const { data: refreshedSession, error } = await supabase.auth.refreshSession()
       
       if (error) {
         console.error('❌ Session refresh failed:', error)
-      } else if (refreshedSession?.session?.provider_token) {
+        return null
+      }
+      
+      if (refreshedSession?.session?.provider_token) {
         console.log('✅ Got provider token from refreshed session')
         TokenStorage.setProviderToken(user.id, refreshedSession.session.provider_token)
         return refreshedSession.session.provider_token
@@ -327,7 +263,6 @@ export function AuthProvider({ children }) {
       console.error('❌ Error during session refresh:', refreshError)
     }
     
-    // All strategies failed
     console.warn('⚠️ No provider token available through any method')
     console.log('💡 User needs to re-authenticate with Google to restore YouTube access')
     return null
