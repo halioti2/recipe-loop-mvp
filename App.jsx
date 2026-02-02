@@ -13,6 +13,7 @@ import GroceryListPage from './src/components/GroceryListPage';
 import HomePage from './src/pages/HomePageTest.jsx';
 import RecipePage from './src/pages/RecipePage.jsx';
 import ListPage from './src/pages/ListPage.jsx';
+import PlaylistDiscoveryPage from './src/pages/PlaylistDiscoveryPage.jsx';
 
 // Conditional Navigation component that only shows when user is authenticated
 function ConditionalNavigation() {
@@ -49,6 +50,11 @@ export default function App() {
             <Route path="/lists" element={
               <ProtectedRoute>
                 <GroceryListPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/playlists" element={
+              <ProtectedRoute>
+                <PlaylistDiscoveryPage />
               </ProtectedRoute>
             } />
             <Route path="/profile" element={
