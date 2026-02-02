@@ -51,7 +51,74 @@ export default function HomePageTest() {
       console.log('Actual user:', user?.email);
     }
 
-    // Get recipes through the user's lists (since recipes table doesn't have user_id yet)
+    // Phase 2.3: Query user_recipes table for user-specific recipe ownership
+    const { data: userRecipesData, error: userRecipesError } = await supabase
+      .from('user_recipes')
+      .select(`
+        id,
+        added_at,
+        is_favorite,
+        personal_notes,
+        playlist_id,
+        position_in_playlist,
+        recipes (
+          id,
+          title,
+          video_url,
+          channel,
+          summary,
+          ingredients,
+          youtube_video_id,
+          sync_status,
+          created_at
+        ),
+        user_playlists (
+          id,
+          title,
+          youtube_playlist_id
+        )
+      `)
+      .eq('user_id', currentUserId)
+      .order('added_at', { ascending: false });
+
+    if (userRecipesError) {
+      console.error('❌ Error fetching user recipes from user_recipes table:', userRecipesError);
+      
+      // Fallback to old lists-based approach for compatibility
+      await fetchUserRecipesLegacy();
+      return;
+    }
+
+    if (userRecipesData) {
+      // Process user recipes with playlist context
+      const recipesWithContext = userRecipesData.map(userRecipe => ({
+        ...userRecipe.recipes,
+        // Add user-specific context
+        user_recipe_id: userRecipe.id,
+        added_at: userRecipe.added_at,
+        is_favorite: userRecipe.is_favorite,
+        personal_notes: userRecipe.personal_notes,
+        playlist_context: userRecipe.user_playlists ? {
+          playlist_id: userRecipe.playlist_id,
+          playlist_title: userRecipe.user_playlists.title,
+          position: userRecipe.position_in_playlist
+        } : null
+      }));
+
+      setRecipes(recipesWithContext);
+      
+      if (import.meta.env.DEV) {
+        console.log('Found user recipes (Phase 2.3):', userRecipesData.length);
+        console.log('Recipes with playlist context:', recipesWithContext);
+      }
+    }
+
+    setLoading(false);
+  }
+
+  // Legacy fallback function for compatibility with old data structure
+  async function fetchUserRecipesLegacy() {
+    // Get recipes through the user's lists (legacy approach)
     const { data: listsData, error: listsError } = await supabase
       .from('lists')
       .select(`
@@ -85,7 +152,11 @@ export default function HomePageTest() {
       
       listsData.forEach(list => {
         if (list.recipes && !seenRecipeIds.has(list.recipes.id)) {
-          uniqueRecipes.push(list.recipes);
+          uniqueRecipes.push({
+            ...list.recipes,
+            // Add context to distinguish from Phase 2.3 recipes
+            legacy_source: 'lists'
+          });
           seenRecipeIds.add(list.recipes.id);
         }
       });
@@ -93,8 +164,8 @@ export default function HomePageTest() {
       setRecipes(uniqueRecipes);
       
       if (import.meta.env.DEV) {
-        console.log('Found lists:', listsData.length);
-        console.log('Unique recipes:', uniqueRecipes.length);
+        console.log('Found lists (legacy):', listsData.length);
+        console.log('Unique recipes (legacy):', uniqueRecipes.length);
       }
     }
 
@@ -260,14 +331,37 @@ export default function HomePageTest() {
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-lg font-semibold text-gray-900">{recipe.title}</h3>
-                    {inList && (
-                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                        In List
-                      </span>
-                    )}
+                    <div className="flex items-center space-x-1">
+                      {recipe.playlist_context && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                          📺 {recipe.playlist_context.playlist_title}
+                        </span>
+                      )}
+                      {recipe.legacy_source && (
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                          Legacy
+                        </span>
+                      )}
+                      {inList && (
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                          In List
+                        </span>
+                      )}
+                    </div>
                   </div>
                   
-                  <p className="text-sm text-gray-600 mb-3">Channel: {recipe.channel}</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm text-gray-600">Channel: {recipe.channel}</p>
+                    {recipe.is_favorite && (
+                      <span className="text-yellow-500">⭐</span>
+                    )}
+                  </div>
+
+                  {recipe.personal_notes && (
+                    <div className="mb-3">
+                      <p className="text-xs text-gray-500 italic">Note: {recipe.personal_notes}</p>
+                    </div>
+                  )}
 
                   {isExpanded && (
                     <div className="mt-4 space-y-4">

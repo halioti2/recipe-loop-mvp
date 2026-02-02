@@ -125,15 +125,14 @@ export default function PlaylistDiscoveryPage() {
         throw new Error('No YouTube access token available. Try signing out and signing back in.');
       }
 
-      // Call the smart playlist sync function
+      // Call the Phase 2.3 smart playlist sync function
       const response = await fetch('/.netlify/functions/playlist-sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: user.id,
-          playlist_id: userPlaylistId,
+          user_playlist_id: userPlaylistId,
           youtube_token: token
         })
       });
@@ -145,9 +144,9 @@ export default function PlaylistDiscoveryPage() {
 
       const result = await response.json();
       setSuccessMessage(
-        `✅ Synced "${result.playlist}": ${result.summary.added} new recipes, ` +
-        `${result.summary.linked} existing recipes linked, ` +
-        `${result.summary.skipped} skipped`
+        `✅ Synced "${result.playlist_name}": ${result.global_recipes_created} new recipes created globally, ` +
+        `${result.user_recipes_added} recipes added to your playlist, ` +
+        `${result.already_in_playlist} already in playlist (${result.total_videos} total videos)`
       );
       
       // Refresh the data to show updated sync status
