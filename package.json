@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.49.4",
     "dotenv": "^17.2.3",
     "google-auth-library": "^10.5.0",

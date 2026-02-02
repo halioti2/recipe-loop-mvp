@@ -4,7 +4,7 @@
  * YouTube recipe aggregation with AI-powered ingredient extraction
  */
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './src/contexts/AuthContext';
+import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import ProtectedRoute from './src/components/ProtectedRoute';
 import Navigation from './src/components/Navigation';
 import LoginPage from './src/components/LoginPage';
@@ -14,12 +14,18 @@ import HomePage from './src/pages/HomePageTest.jsx';
 import RecipePage from './src/pages/RecipePage.jsx';
 import ListPage from './src/pages/ListPage.jsx';
 
+// Conditional Navigation component that only shows when user is authenticated
+function ConditionalNavigation() {
+  const { user } = useAuth();
+  return user ? <Navigation /> : null;
+}
+
 export default function App() {
   return (
     <Router>
       <AuthProvider>
         <div className="min-h-screen bg-gray-50">
-          <Navigation />
+          <ConditionalNavigation />
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<LoginPage />} />

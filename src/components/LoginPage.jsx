@@ -7,7 +7,8 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
   
   const { signIn, signUp, signInWithGoogle, user } = useAuth()
   const location = useLocation()
@@ -21,16 +22,17 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-    setMessage('')
+    setSuccessMessage('')
+    setErrorMessage('')
     
     const { data, error } = isLogin 
       ? await signIn(email, password)
       : await signUp(email, password)
     
     if (error) {
-      setMessage(error.message)
+      setErrorMessage(error.message)
     } else if (!isLogin) {
-      setMessage('Check your email for the confirmation link!')
+      setSuccessMessage('Check your email for the confirmation link!')
     }
     
     setLoading(false)
@@ -38,9 +40,10 @@ export default function LoginPage() {
 
   const handleGoogleSignIn = async () => {
     setLoading(true)
-    setMessage('')
+    setSuccessMessage('')
+    setErrorMessage('')
     const { error } = await signInWithGoogle()
-    if (error) setMessage(error.message)
+    if (error) setErrorMessage(error.message)
     setLoading(false)
   }
 
@@ -75,8 +78,12 @@ export default function LoginPage() {
             />
           </div>
           
-          {message && (
-            <div className="text-center text-sm text-red-600">{message}</div>
+          {errorMessage && (
+            <div className="text-center text-sm text-red-600">{errorMessage}</div>
+          )}
+          
+          {successMessage && (
+            <div className="text-center text-sm text-green-600">{successMessage}</div>
           )}
           
           <div>

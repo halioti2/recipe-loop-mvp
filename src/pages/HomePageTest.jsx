@@ -2,6 +2,26 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 
+// Robust YouTube video ID extractor
+function getYouTubeVideoId(url) {
+  if (!url || typeof url !== 'string') return null;
+  
+  const patterns = [
+    /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/,
+    /youtube\.com\/embed\/([^"&?\/\s]{11})/,
+    /youtube\.com\/v\/([^"&?\/\s]{11})/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return null;
+}
+
 // Temporary version for testing multi-user functionality
 // Shows recipes that the user has added to their lists
 export default function HomePageTest() {
@@ -12,9 +32,15 @@ export default function HomePageTest() {
   const [resyncing, setResyncing] = useState(false);
   const { user } = useAuth();
 
-  // For testing - using your actual user ID from the database
-  const testUserId = '88274763-038b-419a-81f9-da2db472cf31'; // ethan.davey@pursuit.org
-  const currentUserId = user?.id || testUserId; // Use test ID if no user logged in
+  // Development-only fallback user ID
+  const getTestUserId = () => {
+    if (process.env.NODE_ENV === 'development') {
+      return process.env.REACT_APP_TEST_USER_ID || null;
+    }
+    return null;
+  };
+  
+  const currentUserId = user?.id || getTestUserId();
 
   async function fetchUserRecipes() {
     setLoading(true);
@@ -83,9 +109,15 @@ export default function HomePageTest() {
     setResyncing(true);
     try {
       const syncResponse = await fetch('/.netlify/functions/sync');
+      if (!syncResponse.ok) {
+        throw new Error(`Sync failed: ${syncResponse.status} ${syncResponse.statusText}`);
+      }
       const syncResult = await syncResponse.json();
 
       const enrichResponse = await fetch('/.netlify/functions/enrich');
+      if (!enrichResponse.ok) {
+        throw new Error(`Enrich failed: ${enrichResponse.status} ${enrichResponse.statusText}`);
+      }
       const enrichResult = await enrichResponse.json();
 
       alert(
@@ -96,7 +128,7 @@ export default function HomePageTest() {
       );
     } catch (err) {
       console.error('❌ Resync error:', err);
-      alert('Something went wrong during resync.');
+      alert(`Something went wrong during resync: ${err.message}`);
     }
     setResyncing(false);
   }
@@ -198,8 +230,8 @@ export default function HomePageTest() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {recipes.map((recipe) => {
-            const videoId = recipe.video_url?.split('v=')[1];
-            const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+            const videoId = getYouTubeVideoId(recipe.video_url);
+            const thumbnailUrl = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null;
             const isExpanded = expandedId === recipe.id;
             const inList = userLists.find(list => list.recipe_id === recipe.id);
 
@@ -210,11 +242,19 @@ export default function HomePageTest() {
                 onClick={() => setExpandedId(isExpanded ? null : recipe.id)}
               >
                 <div className="aspect-w-16 aspect-h-9 overflow-hidden rounded-t-lg">
-                  <img
-                    src={thumbnailUrl}
-                    alt={recipe.title}
-                    className="object-cover w-full h-48"
-                  />
+                  {thumbnailUrl ? (
+                    <img
+                      src={thumbnailUrl}
+                      alt={recipe.title}
+                      className="object-cover w-full h-48"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-48 bg-gray-200">
+                      <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2h3a1 1 0 011 1v1a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1h3zM4 8h16l-1 12H5L4 8z" />
+                      </svg>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-4">

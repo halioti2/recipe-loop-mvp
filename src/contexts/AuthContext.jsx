@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
-const AuthContext = createContext({})
+const AuthContext = createContext(undefined)
 
 export const useAuth = () => {
   const context = useContext(AuthContext)
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
@@ -28,7 +28,9 @@ export function AuthProvider({ children }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Auth state changed:', event, session?.user?.id ? 'User signed in' : 'User signed out')
+        }
         setUser(session?.user ?? null)
         setLoading(false)
       }
@@ -41,6 +43,9 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: window.location.origin
+      }
     })
     return { data, error }
   }
@@ -59,10 +64,14 @@ export function AuthProvider({ children }) {
   }
   
   const signInWithGoogle = async () => {
+    // Dynamic redirect URL based on environment
+    const redirectTo = window.location.origin;
+    
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        scopes: 'https://www.googleapis.com/auth/youtube.readonly'
+        scopes: 'https://www.googleapis.com/auth/youtube.readonly',
+        redirectTo: redirectTo
       }
     })
     return { data, error }
@@ -77,6 +86,13 @@ export function AuthProvider({ children }) {
     if (!hasYouTubeAccess()) return null
     
     const { data: { session } } = await supabase.auth.getSession()
+    
+    // IMPORTANT: provider_token is only available immediately after OAuth callback
+    // and is not persisted across browser refreshes. For production apps, you should:
+    // 1. Capture provider_token in an Edge Function during OAuth callback
+    // 2. Store it securely server-side with refresh capability
+    // 3. Implement token refresh logic against Google's OAuth endpoint
+    // This current implementation will return null after page refresh
     return session?.provider_token || null
   }
   

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { Navigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 
 export default function GroceryListPage() {
@@ -11,10 +10,6 @@ export default function GroceryListPage() {
   const [newListName, setNewListName] = useState('')
   const [message, setMessage] = useState('')
   const { user } = useAuth()
-
-  if (!user) {
-    return <Navigate to="/login" replace />
-  }
 
   useEffect(() => {
     fetchData()
