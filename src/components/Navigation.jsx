@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Navigation() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, hasYouTubeAccess } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   
@@ -43,7 +43,14 @@ export default function Navigation() {
               </Link>
             ))}
             
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-4">
+              {hasYouTubeAccess() && (
+                <div className="flex items-center space-x-2 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span>YouTube Connected</span>
+                </div>
+              )}
+              
               <span className="text-sm text-gray-600">
                 {user?.email}
               </span>

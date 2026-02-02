@@ -61,8 +61,23 @@ export function AuthProvider({ children }) {
   const signInWithGoogle = async () => {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
+      options: {
+        scopes: 'https://www.googleapis.com/auth/youtube.readonly'
+      }
     })
     return { data, error }
+  }
+
+  const hasYouTubeAccess = () => {
+    // Check if user signed in with Google and has YouTube scope
+    return user?.app_metadata?.provider === 'google'
+  }
+
+  const getYouTubeToken = async () => {
+    if (!hasYouTubeAccess()) return null
+    
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.provider_token || null
   }
   
   return (
@@ -72,7 +87,9 @@ export function AuthProvider({ children }) {
       signUp, 
       signIn, 
       signOut, 
-      signInWithGoogle 
+      signInWithGoogle,
+      hasYouTubeAccess,
+      getYouTubeToken
     }}>
       {children}
     </AuthContext.Provider>
