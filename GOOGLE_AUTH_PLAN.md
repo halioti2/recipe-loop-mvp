@@ -62,6 +62,54 @@
 - `PlaylistRecipesPage.jsx` - Show recipes from specific playlist
 - `PlaylistOverviewPage.jsx` - Dashboard of all connected playlists
 
+#### **2.3 Smart Playlist Sync System**
+**New Logic:**
+- Create dedicated `playlist-sync.js` function using User Recipes architecture
+- Use canonical `youtube_video_id` for reliable recipe deduplication globally
+- Check existing recipes table for matching `youtube_video_id` before inserting
+- Handle user-specific recipe ownership via separate user_recipes table
+- Track sync status with detailed logging per playlist
+
+**User Recipes Architecture:**
+- Global `recipes` table stores deduplicated recipe data (no user_id)
+- `user_recipes` table manages user-specific ownership and playlist associations
+- Same recipe can appear in multiple user playlists without duplication
+- Enables user-specific features (personal notes, favorites, custom organization)
+
+**Smart Sync Process:**
+1. Fetch videos from user's connected playlist via YouTube API
+2. For each video: extract canonical `youtube_video_id` from API response
+3. Query global recipes table for existing entries with matching `youtube_video_id` (primary check)
+4. Fallback: Check for existing recipes by video_url pattern matching (for legacy data)
+5. If recipe exists globally: get recipe_id for association
+6. If recipe doesn't exist: insert new recipe with canonical `youtube_video_id` and standardized `video_url`
+7. Check if user has this recipe in THIS specific playlist (recipe_id + user_id + playlist_id)
+8. If not in user's playlist: insert into user_recipes table with playlist context
+9. Update sync status and log results
+
+**New Functions:**
+- `netlify/functions/playlist-sync.js` - Dedicated User Recipes sync endpoint
+- `findExistingRecipeByVideoId()` - Global recipe deduplication check
+- `addRecipeToUserPlaylist()` - Create user_recipes association
+- `createGlobalRecipe()` - Insert new recipe into global table
+
+**Database Operations:**
+- Query: Check for existing recipes by `youtube_video_id` (global dedup)
+- Insert: New recipes into global table (no user context)
+- Insert: User-specific associations into `user_recipes` table
+- Update: Sync timestamps and video counts on playlists
+- Log: Track all sync operations in `playlist_sync_logs`
+
+**Key Benefits:**
+- ✅ No duplicate recipes globally (same YouTube video = one record)
+- ✅ Users can have same recipe in multiple playlists
+- ✅ Efficient storage (recipe content stored once, associations lightweight)
+- ✅ User-specific features (notes, favorites) built into architecture
+- ✅ Simple queries (direct user_id filtering in user_recipes)
+
+**⚠️ Implementation Note:**
+Until the recipes display page is updated to query `user_recipes` instead of the global `recipes` table, synced playlist recipes will not be visible to users. The current recipe views need to be modified to show user-specific recipe collections rather than global recipes.
+
 ### **Phase 3: Enhanced Sync System**
 
 #### **3.1 User-Specific Sync Operations**
@@ -98,6 +146,12 @@ user_playlists (
   thumbnail_url, sync_enabled, last_synced, created_at
 )
 
+-- User-specific recipe ownership (replaces associations approach)
+user_recipes (
+  id, user_id, recipe_id, playlist_id, position_in_playlist,
+  added_at, personal_notes, is_favorite
+)
+
 -- Playlist sync jobs/logs
 playlist_sync_logs (
   id, user_id, playlist_id, sync_started, sync_completed,
@@ -108,10 +162,28 @@ playlist_sync_logs (
 ### **Enhanced Existing Tables:**
 
 ```sql
--- Add playlist context to recipes
-ALTER TABLE recipes ADD COLUMN source_playlist_id TEXT;
-ALTER TABLE recipes ADD COLUMN playlist_video_position INTEGER;
+-- Remove user context from global recipes table
+ALTER TABLE recipes DROP COLUMN IF EXISTS user_id;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS youtube_video_id TEXT UNIQUE;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS sync_status TEXT DEFAULT 'synced';
+
+-- Global recipes table becomes user-agnostic (for deduplication)
+-- recipes (
+--   id, youtube_video_id, title, video_url, channel, 
+--   summary, ingredients, transcript, sync_status, created_at
+-- )
 ```
+
+### **Smart Sync Logic Implementation:**
+1. **Fetch playlist videos** from YouTube API
+2. **For each video**: Extract canonical `youtube_video_id` from API response
+3. **Check for existing recipes** by `youtube_video_id` in global recipes table (primary)
+4. **Fallback check** for existing recipes by video_url pattern matching (legacy data)
+5. **Create missing recipes** in global table with canonical `youtube_video_id` (enrichment pipeline)
+6. **Create user_recipes entries** linking user to recipes with playlist context
+7. **Remove obsolete user_recipes** (videos removed from playlist)
+8. **Update position ordering** and sync metadata
+9. **Handle rate limits** and batch processing efficiently
 
 ## Risk Assessment & Mitigation
 
@@ -184,16 +256,18 @@ ALTER TABLE recipes ADD COLUMN playlist_video_position INTEGER;
 4. Test basic OAuth flow
 
 #### **Phase B: Playlist Discovery (Week 2)**
-1. Build playlist fetching functionality
-2. Create playlist selection UI
-3. Implement playlist data storage
-4. Add playlist management interface
+1. ✅ Build playlist fetching functionality
+2. ✅ Create playlist selection UI  
+3. ✅ Implement playlist data storage
+4. ✅ Add playlist management interface
+5. ✅ Implement smart playlist sync with deduplication
 
 #### **Phase C: Enhanced Sync (Week 3)**
-1. Extend sync function for user playlists
-2. Add user-specific sync endpoints
-3. Build playlist-specific recipe views
-4. Implement sync controls and status
+1. Implement smart playlist sync with deduplication logic
+2. Create recipe-playlist association system for many-to-many relationships
+3. Build playlist-specific recipe views with filtering
+4. Add sync status tracking and error recovery
+5. Implement sync controls and progress indicators
 
 #### **Phase D: Polish & Optimization (Week 4)**
 1. Add error handling and recovery
