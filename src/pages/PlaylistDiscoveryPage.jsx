@@ -93,7 +93,8 @@ export default function PlaylistDiscoveryPage() {
     const { data, error } = await supabase
       .from('user_playlists')
       .select('id, youtube_playlist_id')
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .eq('active', true); // Only get active playlists
 
     if (error) {
       console.error('Failed to fetch connected playlists:', error);
@@ -136,33 +137,61 @@ export default function PlaylistDiscoveryPage() {
     setConnecting(prev => new Set([...prev, playlistId]));
 
     try {
-      // Save playlist to database
-      const { data, error } = await supabase
+      // First check if playlist already exists (might be inactive)
+      const { data: existingPlaylist, error: checkError } = await supabase
         .from('user_playlists')
-        .insert({
-          user_id: user.id,
-          youtube_playlist_id: playlistId,
-          title: playlist.snippet.title,
-          description: playlist.snippet.description || '',
-          thumbnail_url: playlist.snippet.thumbnails?.high?.url || playlist.snippet.thumbnails?.medium?.url,
-          video_count: playlist.contentDetails?.itemCount || 0,
-          sync_enabled: true
-        })
-        .select('id')
+        .select('id, active')
+        .eq('user_id', user.id)
+        .eq('youtube_playlist_id', playlistId)
         .single();
 
-      if (error) {
-        if (error.code === '23505') { // Unique constraint violation
-          throw new Error('This playlist is already connected');
+      let userPlaylistId;
+      
+      if (existingPlaylist) {
+        // Playlist exists, just reactivate it
+        const { error: updateError } = await supabase
+          .from('user_playlists')
+          .update({ 
+            active: true,
+            sync_enabled: true,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingPlaylist.id);
+          
+        if (updateError) throw updateError;
+        userPlaylistId = existingPlaylist.id;
+        console.log(`✅ Reactivated playlist: ${playlist.snippet.title}`);
+        
+      } else {
+        // New playlist, create it
+        const { data, error } = await supabase
+          .from('user_playlists')
+          .insert({
+            user_id: user.id,
+            youtube_playlist_id: playlistId,
+            title: playlist.snippet.title,
+            description: playlist.snippet.description || '',
+            thumbnail_url: playlist.snippet.thumbnails?.high?.url || playlist.snippet.thumbnails?.medium?.url,
+            video_count: playlist.contentDetails?.itemCount || 0,
+            sync_enabled: true,
+            active: true
+          })
+          .select('id')
+          .single();
+
+        if (error) {
+          if (error.code === '23505') { // Unique constraint violation
+            throw new Error('This playlist is already connected');
+          }
+          throw error;
         }
-        throw error;
+        
+        userPlaylistId = data.id;
+        console.log(`✅ Connected new playlist: ${playlist.snippet.title}`);
       }
 
       setConnectedPlaylists(prev => new Set([...prev, playlistId]));
-      setPlaylistMapping(prev => new Map(prev).set(playlistId, data.id));
-      
-      // Optional: Show success message
-      console.log(`✅ Connected playlist: ${playlist.snippet.title}`);
+      setPlaylistMapping(prev => new Map(prev).set(playlistId, userPlaylistId));
       
     } catch (err) {
       console.error('Failed to connect playlist:', err);
@@ -241,9 +270,13 @@ export default function PlaylistDiscoveryPage() {
     setConnecting(prev => new Set([...prev, playlistId]));
 
     try {
+      // Set playlist as inactive instead of deleting
       const { error } = await supabase
         .from('user_playlists')
-        .delete()
+        .update({ 
+          active: false, 
+          updated_at: new Date().toISOString()
+        })
         .eq('user_id', user.id)
         .eq('youtube_playlist_id', playlistId);
 
@@ -261,7 +294,7 @@ export default function PlaylistDiscoveryPage() {
         return newMap;
       });
 
-      console.log('✅ Disconnected playlist');
+      console.log('✅ Deactivated playlist');
       
     } catch (err) {
       console.error('Failed to disconnect playlist:', err);

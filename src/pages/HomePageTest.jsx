@@ -30,7 +30,8 @@ export default function HomePageTest() {
   const [userLists, setUserLists] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [resyncing, setResyncing] = useState(false);
-  const { user } = useAuth();
+  const [enriching, setEnriching] = useState(false);
+  const { user, getYouTubeToken } = useAuth();
 
   // Development-only fallback user ID
   const getTestUserId = () => {
@@ -49,6 +50,14 @@ export default function HomePageTest() {
       console.log('=== HOMEPAGE TEST DEBUG ===');
       console.log('Current user ID:', currentUserId);
       console.log('Actual user:', user?.email);
+      
+      // Debug supabase client state
+      const session = await supabase.auth.getSession();
+      console.log('Supabase session:', {
+        hasSession: !!session.data.session,
+        userId: session.data.session?.user?.id,
+        isAuthenticated: !!session.data.session?.access_token
+      });
     }
 
     // Phase 2.3: Query user_recipes table for user-specific recipe ownership
@@ -72,13 +81,15 @@ export default function HomePageTest() {
           sync_status,
           created_at
         ),
-        user_playlists (
+        user_playlists!inner (
           id,
           title,
-          youtube_playlist_id
+          youtube_playlist_id,
+          active
         )
       `)
       .eq('user_id', currentUserId)
+      .eq('user_playlists.active', true) // Only recipes from active playlists
       .order('added_at', { ascending: false });
 
     if (userRecipesError) {
@@ -89,27 +100,60 @@ export default function HomePageTest() {
       return;
     }
 
+    if (import.meta.env.DEV) {
+      console.log('Raw query result:', {
+        dataLength: userRecipesData?.length || 0,
+        error: userRecipesError,
+        sampleData: userRecipesData?.slice(0, 2)
+      });
+    }
+
     if (userRecipesData) {
-      // Process user recipes with playlist context
-      const recipesWithContext = userRecipesData.map(userRecipe => ({
-        ...userRecipe.recipes,
-        // Add user-specific context
-        user_recipe_id: userRecipe.id,
-        added_at: userRecipe.added_at,
-        is_favorite: userRecipe.is_favorite,
-        personal_notes: userRecipe.personal_notes,
-        playlist_context: userRecipe.user_playlists ? {
-          playlist_id: userRecipe.playlist_id,
-          playlist_title: userRecipe.user_playlists.title,
-          position: userRecipe.position_in_playlist
-        } : null
-      }));
+      // Debug the raw data structure first
+      if (import.meta.env.DEV) {
+        console.log('Raw userRecipesData structure:');
+        userRecipesData.slice(0, 3).forEach((item, idx) => {
+          console.log(`Item ${idx}:`, {
+            id: item.id,
+            hasRecipes: !!item.recipes,
+            recipesKeys: item.recipes ? Object.keys(item.recipes) : 'null/undefined',
+            recipes: item.recipes
+          });
+        });
+      }
+
+      // Process user recipes with playlist context  
+      const recipesWithContext = userRecipesData
+        .filter(userRecipe => userRecipe.recipes) // Only include items with recipe data
+        .map(userRecipe => ({
+          ...userRecipe.recipes,
+          // Add user-specific context
+          user_recipe_id: userRecipe.id,
+          added_at: userRecipe.added_at,
+          is_favorite: userRecipe.is_favorite,
+          personal_notes: userRecipe.personal_notes,
+          playlist_context: userRecipe.user_playlists ? {
+            playlist_id: userRecipe.playlist_id,
+            playlist_title: userRecipe.user_playlists.title,
+            position: userRecipe.position_in_playlist
+          } : null
+        }));
 
       setRecipes(recipesWithContext);
       
       if (import.meta.env.DEV) {
         console.log('Found user recipes (Phase 2.3):', userRecipesData.length);
         console.log('Recipes with playlist context:', recipesWithContext);
+        
+        // Debug ingredients availability
+        const ingredientsStats = recipesWithContext.map(r => ({
+          title: r.title,
+          hasIngredients: Array.isArray(r.ingredients) && r.ingredients.length > 0,
+          ingredientsLength: Array.isArray(r.ingredients) ? r.ingredients.length : 'not array',
+          ingredientsType: typeof r.ingredients,
+          ingredientsSample: Array.isArray(r.ingredients) ? r.ingredients.slice(0, 2) : r.ingredients
+        }));
+        console.log('Ingredients debug:', ingredientsStats);
       }
     }
 
@@ -176,32 +220,153 @@ export default function HomePageTest() {
     fetchUserRecipes();
   }, [currentUserId]);
 
-  async function handleResync() {
+  async function handlePlaylistSync() {
     setResyncing(true);
     try {
-      const syncResponse = await fetch('/.netlify/functions/sync');
-      if (!syncResponse.ok) {
-        throw new Error(`Sync failed: ${syncResponse.status} ${syncResponse.statusText}`);
+      // Get user's YouTube token for API calls
+      const youtubeToken = await getYouTubeToken();
+      if (!youtubeToken) {
+        throw new Error('YouTube authentication required. Please sign in again.');
       }
-      const syncResult = await syncResponse.json();
 
-      const enrichResponse = await fetch('/.netlify/functions/enrich');
-      if (!enrichResponse.ok) {
-        throw new Error(`Enrich failed: ${enrichResponse.status} ${enrichResponse.statusText}`);
+      // Get all active playlists for this user
+      const { data: activePlaylists, error: playlistError } = await supabase
+        .from('user_playlists')
+        .select('id, title')
+        .eq('user_id', currentUserId)
+        .eq('active', true);
+
+      if (playlistError) {
+        throw new Error(`Failed to get playlists: ${playlistError.message}`);
       }
-      const enrichResult = await enrichResponse.json();
 
-      alert(
-        `✅ Resync complete.\n\n` +
-        `Synced: ${syncResult.added || 0} new recipes.\n` +
-        `Enriched: ${enrichResult.updated || 0} recipes.\n\n` +
-        `🔄 Please refresh the page to see the latest updates.`
-      );
+      if (!activePlaylists || activePlaylists.length === 0) {
+        alert('📋 No active playlists found. Please connect some playlists first.');
+        return;
+      }
+
+      console.log(`🔄 Syncing ${activePlaylists.length} active playlists...`);
+      
+      let totalVideos = 0;
+      let totalNewRecipes = 0;
+      let totalUserRecipes = 0;
+      let errors = [];
+
+      // Sync each active playlist
+      for (const playlist of activePlaylists) {
+        try {
+          console.log(`🎵 Syncing playlist: ${playlist.title}`);
+          
+          const syncResponse = await fetch('/.netlify/functions/playlist-sync', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              user_playlist_id: playlist.id,
+              youtube_token: youtubeToken
+            })
+          });
+
+          if (!syncResponse.ok) {
+            throw new Error(`Sync failed for ${playlist.title}: ${syncResponse.status}`);
+          }
+
+          const result = await syncResponse.json();
+          totalVideos += result.total_videos || 0;
+          totalNewRecipes += result.global_recipes_created || 0;
+          totalUserRecipes += result.user_recipes_added || 0;
+
+          console.log(`✅ ${playlist.title}: ${result.user_recipes_added || 0} recipes added`);
+          
+        } catch (playlistError) {
+          console.error(`❌ Error syncing ${playlist.title}:`, playlistError);
+          errors.push(`${playlist.title}: ${playlistError.message}`);
+        }
+      }
+
+      // Show results
+      let message = `✅ Playlist sync complete!\n\n` +
+        `📊 Results:\n` +
+        `• Playlists synced: ${activePlaylists.length}\n` +
+        `• Total videos processed: ${totalVideos}\n` +
+        `• New recipes created: ${totalNewRecipes}\n` +
+        `• Your recipes added: ${totalUserRecipes}\n\n`;
+
+      if (errors.length > 0) {
+        message += `⚠️ Errors:\n${errors.join('\n')}\n\n`;
+      }
+
+      message += `🔄 Refreshing your recipe collection...`;
+      
+      alert(message);
+      
+      // Refresh the recipes list
+      await fetchUserRecipes();
+
     } catch (err) {
-      console.error('❌ Resync error:', err);
-      alert(`Something went wrong during resync: ${err.message}`);
+      console.error('❌ Playlist sync error:', err);
+      alert(`Something went wrong during playlist sync: ${err.message}`);
+    } finally {
+      setResyncing(false);
     }
-    setResyncing(false);
+  }
+
+  async function handleEnrichRecipes() {
+    setEnriching(true);
+    try {
+      console.log('🔄 Starting recipe enrichment process...');
+      
+      const enrichResponse = await fetch('/.netlify/functions/playlist-enrich', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: currentUserId,
+          batch_size: 3,  // Process 3 recipes at a time
+          max_recipes: 15  // Limit to 15 recipes per run
+        })
+      });
+
+      if (!enrichResponse.ok) {
+        throw new Error(`Enrichment failed: ${enrichResponse.status}`);
+      }
+
+      const result = await enrichResponse.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Enrichment process failed');
+      }
+
+      // Show results
+      const stats = result.stats;
+      let message = `✅ Recipe enrichment complete!\n\n` +
+        `📊 Results:\n` +
+        `• Recipes found needing enrichment: ${stats.recipes_found}\n` +
+        `• Recipes processed: ${stats.recipes_processed}\n` +
+        `• Transcripts added: ${stats.transcripts_added}\n` +
+        `• Ingredients added: ${stats.ingredients_added}\n` +
+        `• Success rate: ${stats.success_rate}\n` +
+        `• Playlists affected: ${stats.playlists_affected}\n\n`;
+
+      if (result.errors && result.errors.length > 0) {
+        message += `⚠️ Some recipes had issues:\n${result.errors.slice(0, 3).map(e => `• ${e.title}: ${e.error}`).join('\n')}\n\n`;
+      }
+
+      message += `🔄 Refreshing your recipe collection...`;
+      
+      alert(message);
+      
+      // Refresh the recipes list to show updated data
+      await fetchUserRecipes();
+
+    } catch (err) {
+      console.error('❌ Recipe enrichment error:', err);
+      alert(`Something went wrong during recipe enrichment: ${err.message}`);
+    } finally {
+      setEnriching(false);
+    }
   }
 
   async function handleAddToGroceryList(e, recipe) {
@@ -271,16 +436,30 @@ export default function HomePageTest() {
         </p>
       </div>
 
-      {/* Sync button */}
-      <button
-        onClick={handleResync}
-        disabled={resyncing}
-        className={`mb-6 px-6 py-3 rounded-lg font-medium text-white ${
-          resyncing ? 'bg-purple-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'
-        }`}
-      >
-        {resyncing ? 'Resyncing…' : 'Resync & Enrich'}
-      </button>
+      {/* Action buttons */}
+      <div className="mb-6 flex gap-4">
+        {/* Playlist Sync button */}
+        <button
+          onClick={handlePlaylistSync}
+          disabled={resyncing || enriching}
+          className={`px-6 py-3 rounded-lg font-medium text-white ${
+            resyncing ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+          }`}
+        >
+          {resyncing ? 'Syncing Playlists…' : 'Sync Active Playlists'}
+        </button>
+
+        {/* Recipe Enrichment button */}
+        <button
+          onClick={handleEnrichRecipes}
+          disabled={enriching || resyncing}
+          className={`px-6 py-3 rounded-lg font-medium text-white ${
+            enriching ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+          }`}
+        >
+          {enriching ? 'Enriching Recipes…' : 'Enrich Recipes'}
+        </button>
+      </div>
 
       {loading ? (
         <div className="text-center py-8">
@@ -300,7 +479,7 @@ export default function HomePageTest() {
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {recipes.map((recipe) => {
+          {recipes.map((recipe, index) => {
             const videoId = getYouTubeVideoId(recipe.video_url);
             const thumbnailUrl = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null;
             const isExpanded = expandedId === recipe.id;
@@ -308,7 +487,7 @@ export default function HomePageTest() {
 
             return (
               <div
-                key={recipe.id}
+                key={recipe.id || `recipe-${index}`}
                 className="bg-white border rounded-lg shadow hover:shadow-lg transition cursor-pointer"
                 onClick={() => setExpandedId(isExpanded ? null : recipe.id)}
               >
@@ -370,12 +549,19 @@ export default function HomePageTest() {
                           <h4 className="font-medium text-gray-700 mb-2">Ingredients:</h4>
                           <ul className="list-disc list-inside space-y-1 text-sm text-gray-800 max-h-32 overflow-y-auto">
                             {recipe.ingredients.map((ingredient, idx) => (
-                              <li key={idx}>{ingredient}</li>
+                              <li key={`${recipe.id}-ingredient-${idx}`}>{ingredient}</li>
                             ))}
                           </ul>
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-400 italic">Ingredients not available.</p>
+                        <div>
+                          <p className="text-sm text-gray-400 italic">Ingredients not available.</p>
+                          {import.meta.env.DEV && (
+                            <p className="text-xs text-red-500 mt-1">
+                              Debug: ingredients = {JSON.stringify(recipe.ingredients)}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
