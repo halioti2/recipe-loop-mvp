@@ -1,20 +1,60 @@
 /**
  * Phase 2.3 Smart Playlist Sync Implementation
  * Updated to use User Recipes architecture with youtube_video_id deduplication
- * 
+ *
  * Key Features:
  * - Global recipe deduplication using canonical youtube_video_id
  * - User-specific recipe ownership via user_recipes table
  * - Fallback legacy URL pattern matching
  * - Comprehensive sync logging and error handling
+ * - YouTube token fetched from DB (no longer passed from frontend)
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { refreshYouTubeToken } from './utils/refreshYouTubeToken.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
+
+/**
+ * Fetches the user's YouTube access token from the database.
+ * Auto-refreshes the token if it is expiring within 5 minutes.
+ */
+async function getValidYouTubeToken(userId) {
+  const { data: tokenRecord, error } = await supabase
+    .from('user_oauth_tokens')
+    .select('access_token, refresh_token, expires_at')
+    .eq('user_id', userId)
+    .eq('provider', 'youtube')
+    .single()
+
+  if (error || !tokenRecord) {
+    throw Object.assign(new Error('YouTube not connected'), { code: 'youtube_not_connected' })
+  }
+
+  if (!tokenRecord.refresh_token) {
+    throw Object.assign(new Error('YouTube refresh token missing - please reconnect'), { code: 'refresh_token_missing' })
+  }
+
+  const expiresAt = new Date(tokenRecord.expires_at)
+  const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000)
+
+  if (expiresAt < fiveMinutesFromNow) {
+    console.log('🔄 Token expiring soon, refreshing before sync...')
+    const refreshed = await refreshYouTubeToken(userId)
+    return refreshed.access_token
+  }
+
+  await supabase
+    .from('user_oauth_tokens')
+    .update({ last_used_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('provider', 'youtube')
+
+  return tokenRecord.access_token
+}
 
 export async function handler(event, context) {
   const headers = {
@@ -28,13 +68,49 @@ export async function handler(event, context) {
   }
 
   try {
-    const { user_playlist_id, youtube_token } = JSON.parse(event.body)
-    
-    if (!user_playlist_id || !youtube_token) {
+    // Authenticate the user via JWT
+    const authHeader = event.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({ error: 'Missing authorization header' })
+      }
+    }
+
+    const jwt = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabase.auth.getUser(jwt)
+
+    if (authError || !user) {
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({ error: 'Invalid authentication token' })
+      }
+    }
+
+    const { user_playlist_id } = JSON.parse(event.body)
+
+    if (!user_playlist_id) {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ error: 'user_playlist_id and youtube_token required' })
+        body: JSON.stringify({ error: 'user_playlist_id required' })
+      }
+    }
+
+    // Fetch valid YouTube token from DB (auto-refreshes if expiring soon)
+    let youtube_token
+    try {
+      youtube_token = await getValidYouTubeToken(user.id)
+    } catch (tokenError) {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({
+          error: tokenError.code || 'youtube_not_connected',
+          message: tokenError.message
+        })
       }
     }
 
