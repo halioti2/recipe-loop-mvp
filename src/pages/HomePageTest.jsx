@@ -223,10 +223,10 @@ export default function HomePageTest() {
   async function handlePlaylistSync() {
     setResyncing(true);
     try {
-      // Get user's YouTube token for API calls
-      const youtubeToken = await getYouTubeToken();
-      if (!youtubeToken) {
-        throw new Error('YouTube authentication required. Please sign in again.');
+      // Get Supabase session JWT for backend auth
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Not authenticated. Please sign in again.');
       }
 
       // Get all active playlists for this user
@@ -246,7 +246,7 @@ export default function HomePageTest() {
       }
 
       console.log(`🔄 Syncing ${activePlaylists.length} active playlists...`);
-      
+
       let totalVideos = 0;
       let totalNewRecipes = 0;
       let totalUserRecipes = 0;
@@ -256,15 +256,15 @@ export default function HomePageTest() {
       for (const playlist of activePlaylists) {
         try {
           console.log(`🎵 Syncing playlist: ${playlist.title}`);
-          
+
           const syncResponse = await fetch('/.netlify/functions/playlist-sync', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
             },
             body: JSON.stringify({
               user_playlist_id: playlist.id,
-              youtube_token: youtubeToken
             })
           });
 
@@ -334,7 +334,7 @@ export default function HomePageTest() {
       }
 
       const result = await enrichResponse.json();
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Enrichment process failed');
       }

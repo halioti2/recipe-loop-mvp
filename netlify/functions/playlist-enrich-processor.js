@@ -13,9 +13,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-// Gemini API configuration
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
+// Gemini API configuration — use GOOGLE_AI_KEY to avoid Netlify AI integration override of GEMINI_API_KEY
+const GEMINI_API_KEY = process.env.GOOGLE_AI_KEY
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+
+const TRANSCRIPT_API_URL = 'https://transcript-microservice.fly.dev/transcript'
 
 export async function handler(event, context) {
   const headers = {
@@ -68,25 +70,29 @@ export async function handler(event, context) {
         console.log(`🔄 Processing: ${recipe.title}`)
         
         let needsTranscript = !recipe.transcript
-        let needsIngredients = !recipe.ingredients || 
+        let needsIngredients = !recipe.ingredients ||
           (Array.isArray(recipe.ingredients) && recipe.ingredients.length === 0)
 
         let transcript = recipe.transcript
         let ingredients = recipe.ingredients
 
+
         // Get transcript if needed
         if (needsTranscript) {
           try {
-            const transcriptResponse = await fetch(`/.netlify/functions/transcript-fill`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ video_url: recipe.video_url })
-            })
+            const match = recipe.video_url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/)
+            const videoId = match ? match[1] : recipe.video_url.slice(-11)
+
+            const transcriptResponse = await fetch(`${TRANSCRIPT_API_URL}?video_id=${videoId}`)
 
             if (transcriptResponse.ok) {
-              const transcriptResult = await transcriptResponse.json()
-              transcript = transcriptResult.transcript
-              console.log(`✅ Transcript fetched for: ${recipe.title}`)
+              const transcriptData = await transcriptResponse.json()
+              if (transcriptData.transcript) {
+                transcript = transcriptData.transcript.slice(0, 3000)
+                console.log(`✅ Transcript fetched for: ${recipe.title}`)
+              } else {
+                console.log(`⚠️  Empty transcript for: ${recipe.title}`)
+              }
             } else {
               console.log(`⚠️  Could not fetch transcript for: ${recipe.title}`)
             }
@@ -102,9 +108,9 @@ export async function handler(event, context) {
 
 Transcript: ${transcript.substring(0, 2000)}`
 
-            const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            const geminiResponse = await fetch(GEMINI_API_URL, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
               body: JSON.stringify({
                 contents: [{
                   parts: [{ text: prompt }]
@@ -120,7 +126,7 @@ Transcript: ${transcript.substring(0, 2000)}`
                 // Try to parse the JSON response
                 const cleanedText = generatedText.replace(/```json\n?|\n?```/g, '').trim()
                 const parsedIngredients = JSON.parse(cleanedText)
-                
+
                 if (Array.isArray(parsedIngredients) && parsedIngredients.length > 0) {
                   ingredients = parsedIngredients
                   console.log(`✅ Ingredients generated for: ${recipe.title}`)
@@ -128,9 +134,15 @@ Transcript: ${transcript.substring(0, 2000)}`
                   console.log(`⚠️  Invalid ingredients format for: ${recipe.title}`)
                 }
               }
+            } else {
+              const errText = await geminiResponse.text()
+              const errMsg = `Gemini ${geminiResponse.status}: ${errText.slice(0, 200)}`
+              console.error(`❌ Gemini API error for ${recipe.title}: ${errMsg}`)
+              results.errors.push({ recipe_id: recipe.id, title: recipe.title, error: errMsg })
             }
           } catch (ingredientsError) {
             console.error(`❌ Ingredients error for ${recipe.title}:`, ingredientsError)
+            results.errors.push({ recipe_id: recipe.id, title: recipe.title, error: ingredientsError.message })
           }
         }
 
