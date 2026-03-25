@@ -1,6 +1,7 @@
 import { supabase } from '../../src/lib/supabaseClient.js';
 
-const TRANSCRIPT_API_URL = 'https://transcript-microservice.fly.dev/transcript';
+const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY;
+const SUPADATA_TRANSCRIPT_URL = 'https://api.supadata.ai/v1/youtube/transcript';
 
 // Use direct Gemini API instead of Vertex AI
 async function callGeminiAPI(prompt, apiKey) {
@@ -115,9 +116,10 @@ export async function handler(event, context) {
           const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
           
           try {
-            const res = await fetch(`${TRANSCRIPT_API_URL}?video_id=${videoId}`, {
-              signal: controller.signal
-            });
+            const res = await fetch(
+              `${SUPADATA_TRANSCRIPT_URL}?videoId=${videoId}`,
+              { signal: controller.signal, headers: { 'x-api-key': SUPADATA_API_KEY } }
+            );
             
             // Clear timeout on successful fetch
             clearTimeout(timeoutId);
@@ -127,10 +129,10 @@ export async function handler(event, context) {
             }
             
             const data = await res.json();
-            if (data.transcript) {
-              // Cap transcript to 3000 characters (same as transcript-fill.js)
-              transcript = data.transcript.slice(0, 3000);
-              console.log(`🌐 Fetched transcript for ${videoId} (${data.transcript.length} chars, truncated to ${transcript.length})`);
+            if (data.content && data.content.length > 0) {
+              const rawTranscript = data.content.map(c => c.text).join(' ');
+              transcript = rawTranscript.slice(0, 3000);
+              console.log(`🌐 Fetched transcript for ${videoId} (${rawTranscript.length} chars, truncated to ${transcript.length})`);
             }
           } catch (e) {
             clearTimeout(timeoutId);

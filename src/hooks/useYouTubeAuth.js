@@ -113,6 +113,12 @@ export function useYouTubeAuth() {
     if (!data) return null
 
     const expired = new Date(data.expires_at) <= new Date()
+    console.log('🔍 Token expiry check:', {
+      expiresAt: data.expires_at,
+      parsedDate: new Date(data.expires_at).toISOString(),
+      now: new Date().toISOString(),
+      expired: expired
+    })
     if (expired) return null
 
     return data.access_token

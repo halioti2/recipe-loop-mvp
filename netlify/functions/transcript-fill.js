@@ -1,6 +1,7 @@
 import { supabase } from '../../src/lib/supabaseClient.js';
 
-const TRANSCRIPT_API_URL = 'https://transcript-microservice.fly.dev/transcript';
+const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY;
+const SUPADATA_TRANSCRIPT_URL = 'https://api.supadata.ai/v1/youtube/transcript';
 
 export async function handler(event, context) {
   const headers = {
@@ -29,9 +30,15 @@ export async function handler(event, context) {
       const match = r.video_url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
       const videoId = match ? match[1] : r.video_url.slice(-11);
 
-      const res = await fetch(`${TRANSCRIPT_API_URL}?video_id=${videoId}`);
+      const res = await fetch(
+        `${SUPADATA_TRANSCRIPT_URL}?videoId=${videoId}`,
+        { headers: { 'x-api-key': SUPADATA_API_KEY } }
+      );
       const json = await res.json();
-      const transcript = json.transcript?.slice(0, 3000) || ''; // optional length cap
+      const rawTranscript = (json.content && json.content.length > 0)
+        ? json.content.map(c => c.text).join(' ')
+        : '';
+      const transcript = rawTranscript.slice(0, 3000);
 
       if (transcript) {
         const { error: upErr } = await supabase
