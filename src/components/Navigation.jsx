@@ -14,7 +14,7 @@ export default function Navigation() {
   const navLinks = [
     { path: '/', label: 'Recipes', icon: '🍽️' },
     { path: '/playlists', label: 'YouTube Playlists', icon: '📹' },
-    { path: '/grocery-list', label: 'Grocery List', icon: '🛒' },
+    { path: '/lists', label: 'Grocery List', icon: '🛒' },
     { path: '/profile', label: 'Profile', icon: '👤' }
   ]
   
