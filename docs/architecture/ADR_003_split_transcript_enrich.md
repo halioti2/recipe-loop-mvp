@@ -225,6 +225,6 @@ The correct resolution for an MVP is to keep individual functions short-lived an
 
 - `max_batch_size` values (3 for transcript, 5 for enrich) are starting points. Tune based on Netlify logs after initial deployment. Transcript microservice response time varies significantly with video length and YouTube captions API latency.
 - If on the Netlify free tier (10s timeout), reduce transcript `max_batch_size` to **1** until Pro is confirmed.
-- `recipes.transcript` is currently capped at 3000 characters inside the processor. This cap should live in `playlist-transcript-processor.js`. The enrich processor should not re-apply the cap on the read side.
+- `recipes.transcript` stores the full transcript — no character cap is applied.
 - If a recipe has no captions available (YouTube returns empty transcript), the transcript processor should store a sentinel value (e.g. empty string + a `transcript_unavailable` flag, or `"NO_TRANSCRIPT"`) rather than leaving `transcript` as `null`. This prevents the finder from repeatedly re-queuing videos that will never have captions.
 - The orphaned `enrich.js` and `transcript-fill.js` use the anon-key Supabase client (`src/lib/supabaseClient.js`). The active pipeline uses the service role key. Do not merge their patterns into the new functions.

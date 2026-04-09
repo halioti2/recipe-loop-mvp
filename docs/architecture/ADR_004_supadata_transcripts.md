@@ -22,12 +22,6 @@ Switch from the self-hosted transcript microservice to **Supadata API** for tran
 
 ---
 
-## Status
-
-In Review
-
----
-
 ## Consequences
 
 ### Positive

@@ -87,10 +87,6 @@ The pipeline is split across **5 Netlify functions** triggered by two explicit u
 | `playlist-enrich` | HTTP POST (UI button) | Orchestrator — batches recipes and calls finder + processor | None | None (delegates) |
 | `playlist-enrich-finder` | Called by `playlist-enrich` | Identify recipes needing transcript or ingredients | None | `user_recipes`, `recipes`, `user_playlists` |
 | `playlist-enrich-processor` | Called by `playlist-enrich` | Fetch transcripts + extract ingredients via AI | Supadata, Gemini | `recipes` |
-| `enrich` | HTTP GET (standalone) | Legacy single-function enrichment (2 recipes at a time) | Supadata, Gemini | `recipes` |
-| `transcript-fill` | HTTP GET (standalone) | Legacy transcript-only fill (2 recipes at a time) | Supadata | `recipes` |
-
-> **Note:** `enrich.js` and `transcript-fill.js` are older standalone functions. The active pipeline is the `playlist-enrich` → `playlist-enrich-finder` → `playlist-enrich-processor` chain.
 
 ---
 

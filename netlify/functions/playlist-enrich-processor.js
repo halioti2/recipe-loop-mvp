@@ -131,8 +131,7 @@ export async function handler(event, context) {
               timings[recipeKey].steps.transcript_parse = timings[`${recipeKey}_transcript_parse`].duration
 
               if (transcriptData.content && transcriptData.content.length > 0) {
-                const rawTranscript = transcriptData.content.map(c => c.text).join(' ')
-                transcript = rawTranscript.slice(0, 3000)
+                transcript = transcriptData.content.map(c => c.text).join(' ')
                 console.log(`✅ Transcript fetched for: ${recipe.title}`)
               } else {
                 console.log(`⚠️  Empty transcript for: ${recipe.title}`)
@@ -151,9 +150,10 @@ export async function handler(event, context) {
         if (needsIngredients && transcript) {
           try {
             startTimer(`${recipeKey}_transcript_to_gemini_call`)
+
             const prompt = `Extract the ingredients from this recipe transcript. Return only a JSON array of ingredient strings (e.g., ["1 cup flour", "2 eggs", "1 tsp salt"]). Be specific about quantities and measurements.
 
-Transcript: ${transcript.substring(0, 2000)}`
+Transcript: ${transcript}`
 
             startTimer(`${recipeKey}_gemini_api`)
             const geminiResponse = await fetch(GEMINI_API_URL, {
@@ -162,7 +162,10 @@ Transcript: ${transcript.substring(0, 2000)}`
               body: JSON.stringify({
                 contents: [{
                   parts: [{ text: prompt }]
-                }]
+                }],
+                generationConfig: {
+                  thinkingConfig: { thinkingBudget: 0 }
+                }
               })
             })
             endTimer(`${recipeKey}_gemini_api`)
