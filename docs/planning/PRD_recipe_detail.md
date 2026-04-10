@@ -10,6 +10,7 @@ A dedicated page where users view a full recipe — video, ingredients, and cook
 ### As a Home Cook
 
 #### Viewing the Recipe
+- I want a "View Recipe" button on each recipe card so I can navigate to the full recipe detail page
 - I want to watch the recipe video on the page so I don't have to open YouTube separately
 - I want to see the full ingredient list with quantities so I know what to buy
 - I want to see step-by-step cooking instructions extracted from the transcript
@@ -29,8 +30,8 @@ A dedicated page where users view a full recipe — video, ingredients, and cook
 | # | Requirement | Status |
 |---|-------------|--------|
 | F1 | Display embedded YouTube video player | Todo |
-| F2 | Display full ingredient list (with quantities where available) | Todo |
-| F3 | Display cooking steps extracted from transcript | Todo |
+| F2 | Display full ingredient list (ingredients already stored with quantities) | Todo |
+| F3 | Display cooking steps extracted from transcript | Todo — requires enrich pipeline update |
 | F4 | Add to Grocery List button | Todo |
 | F5 | Chat input + message history panel | Todo |
 | F6 | Send question to Gemini with full transcript as context | Todo |
@@ -150,14 +151,15 @@ User: <current question>
 
 The following recipe fields must be populated for the full page to render:
 
-| Field | Source | Notes |
-|-------|--------|-------|
-| `title` | YouTube API | Already stored |
-| `youtube_id` | YouTube API | Already stored — used for embed URL |
-| `ingredients` | Gemini extraction | Already stored as `text[]` |
-| `steps` | Gemini extraction | **New field — not yet extracted** |
-| `quantities` | Gemini extraction | **New field — currently ingredients are flat strings** |
-| `transcript` | Supadata microservice | **Must store full transcript, not capped at 3000 chars** |
+| Field | Source | Status | Notes |
+|-------|--------|--------|-------|
+| `title` | YouTube API | Ready | |
+| `youtube_video_id` | YouTube API | Ready | Used for embed URL |
+| `video_url` | YouTube API | Ready | Fallback for video ID extraction |
+| `channel` | YouTube API | Ready | |
+| `ingredients` | Gemini extraction | Ready | Stored as `text[]` with quantities (e.g. "1 cup flour") |
+| `transcript` | Supadata microservice | Ready | Full text stored after first enrich run |
+| `steps` | Gemini extraction | **Not yet extracted** | New field — requires enrich pipeline update |
 
 ---
 
@@ -176,4 +178,4 @@ The following recipe fields must be populated for the full page to render:
 - Should cooking steps be extracted during the existing enrich pipeline, or on-demand when the recipe detail page loads?
 - Should chat history persist to Supabase for users who want to re-read a prior session?
 - How do we handle long transcripts that exceed Gemini's context window? (Time-based chunking — see `research_arch_2026_02_24_video_qa_system.md`)
-- Should the chat panel be visible on mobile, or collapsed behind a toggle?
+- Should the chat panel be visible on mobile, or collapsed behind a toggle? (Current design: collapsed behind Chat tab)

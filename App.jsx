@@ -10,7 +10,7 @@ import Navigation from './src/components/Navigation';
 import LoginPage from './src/components/LoginPage';
 import ProfilePage from './src/components/ProfilePage';
 import GroceryListPage from './src/components/GroceryListPage';
-import HomePage from './src/pages/HomePageTest.jsx';
+import HomePage from './src/pages/HomePage.jsx';
 import RecipePage from './src/pages/RecipePage.jsx';
 import ListPage from './src/pages/ListPage.jsx';
 import PlaylistDiscoveryPage from './src/pages/PlaylistDiscoveryPage.jsx';
