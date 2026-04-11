@@ -1,4 +1,5 @@
 # Research Document Template
+<!-- Filename: RE_[topic].md — date goes inside the document, not in the filename -->
 
 **Status:** [Research Complete / In Progress]
 **Date:** YYYY-MM-DD

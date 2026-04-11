@@ -7,7 +7,7 @@
 **IMPORTANT:** Research documents are created on-demand only when explicitly requested. Do not proactively create research documents - wait for the user to specifically ask for "architecture research" or similar.
 
 #### Architecture Research
-- **Naming:** `docs/research/research_arch_YYYY_MM_DD_[topic].md`
+- **Naming:** `docs/research/RE_[topic].md` — date goes inside the document, not in the filename
 - **Purpose:** Analyze design patterns, feasibility, trade-offs, and best practices
 - **Required Sections:**
   - Executive Summary (key findings/TL;DR)

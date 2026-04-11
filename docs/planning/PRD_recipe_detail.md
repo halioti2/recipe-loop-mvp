@@ -158,7 +158,7 @@ The following recipe fields must be populated for the full page to render:
 | `video_url` | YouTube API | Ready | Fallback for video ID extraction |
 | `channel` | YouTube API | Ready | |
 | `ingredients` | Gemini extraction | Ready | Stored as `text[]` with quantities (e.g. "1 cup flour") |
-| `transcript` | Supadata microservice | Ready | Full text stored after first enrich run |
+| `transcript` | Supadata microservice | Ready | Full text stored after first enrich run. No character cap — earlier pipeline versions may have truncated; re-enrich to get full transcript |
 | `steps` | Gemini extraction | **Not yet extracted** | New field — requires enrich pipeline update |
 
 ---
