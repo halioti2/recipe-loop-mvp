@@ -76,7 +76,7 @@ export async function handler(event, context) {
     startTimer('db_fetch_recipes')
     const { data: recipes, error: fetchError } = await supabase
       .from('recipes')
-      .select('id, title, video_url, transcript, ingredients, youtube_video_id')
+      .select('id, title, video_url, transcript, ingredients, youtube_video_id, enrich_attempt_count')
       .in('id', recipesToProcess)
     endTimer('db_fetch_recipes')
     console.log(`⏱️  DB fetch took ${timings.db_fetch_recipes.duration}ms for ${recipesToProcess.length} recipes`)
@@ -110,6 +110,8 @@ export async function handler(event, context) {
 
 
         // Get transcript if needed
+        let transcriptFailed = false
+        const MAX_ENRICH_ATTEMPTS = 3
         if (needsTranscript) {
           try {
             startTimer(`${recipeKey}_enrich_to_transcript_call`)
@@ -135,14 +137,17 @@ export async function handler(event, context) {
                 console.log(`✅ Transcript fetched for: ${recipe.title}`)
               } else {
                 console.log(`⚠️  Empty transcript for: ${recipe.title}`)
+                transcriptFailed = true
               }
             } else {
-              console.log(`⚠️  Could not fetch transcript for: ${recipe.title}`)
+              console.log(`⚠️  Could not fetch transcript for: ${recipe.title} (HTTP ${transcriptResponse.status})`)
+              transcriptFailed = true
             }
             endTimer(`${recipeKey}_enrich_to_transcript_call`)
             timings[recipeKey].steps.enrich_to_transcript_call = timings[`${recipeKey}_enrich_to_transcript_call`].duration
           } catch (transcriptError) {
             console.error(`❌ Transcript error for ${recipe.title}:`, transcriptError)
+            transcriptFailed = true
           }
         }
 
@@ -214,6 +219,10 @@ Transcript: ${transcript}`
         if (needsIngredients && ingredients) {
           updates.ingredients = ingredients
           results.successful_ingredients++
+        }
+        if (transcriptFailed) {
+          updates.enrich_attempt_count = (recipe.enrich_attempt_count ?? 0) + 1
+          console.log(`⚠️  Recording failed attempt ${updates.enrich_attempt_count}/${MAX_ENRICH_ATTEMPTS} for: ${recipe.title}`)
         }
 
         if (Object.keys(updates).length > 0) {

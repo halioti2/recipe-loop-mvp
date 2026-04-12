@@ -49,7 +49,8 @@ export async function handler(event, context) {
           video_url,
           youtube_video_id,
           transcript,
-          ingredients
+          ingredients,
+          enrich_attempt_count
         ),
         user_playlists!inner (
           id,
@@ -60,6 +61,7 @@ export async function handler(event, context) {
       .eq('user_id', user_id)
       .eq('user_playlists.active', true)
       .or('transcript.is.null,transcript.eq.', { referencedTable: 'recipes' })
+      .lt('recipes.enrich_attempt_count', 3)
 
     if (enrichmentError) {
       console.error('❌ Error finding recipes needing enrichment:', enrichmentError)
@@ -130,7 +132,8 @@ export async function handler(event, context) {
       playlist: ur.user_playlists.title,
       enrichment_type: 'transcript',
       has_transcript: !!ur.recipes.transcript,
-      has_ingredients: hasValidIngredients(ur.recipes.ingredients)
+      has_ingredients: hasValidIngredients(ur.recipes.ingredients),
+      enrich_attempt_count: ur.recipes.enrich_attempt_count
     })) || []
 
     const ingredientsNeeded = filteredIngredientsNeeded?.map(ur => ({
