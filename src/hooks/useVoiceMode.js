@@ -15,6 +15,7 @@ export function useVoiceMode({ onTranscript }) {
   const mediaStreamRef = useRef(null);
   const audioRef = useRef(null);
   const audioContextRef = useRef(null);
+  const unlockedAudioRef = useRef(null); // reusable Audio element unlocked by user gesture
   const silenceContextRef = useRef(null);
   const isListeningRef = useRef(false);
   const chunksRef = useRef([]);
@@ -30,7 +31,8 @@ export function useVoiceMode({ onTranscript }) {
     setTimeout(() => setError(null), delay);
   }, []);
 
-  // iOS audio unlock — play a silent buffer to allow subsequent audio.play()
+  // iOS audio unlock — must happen inside a user gesture (the toggle tap)
+  // Unlock both AudioContext (for silence detection) and HTMLAudioElement (for TTS playback)
   const unlockAudio = useCallback(() => {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -42,6 +44,26 @@ export function useVoiceMode({ onTranscript }) {
       audioContextRef.current = ctx;
     } catch {
       // AudioContext not available
+    }
+
+    // Create and play a silent Audio element to unlock HTMLAudioElement.play() on iOS
+    // This same element is reused for all TTS playback
+    try {
+      const audio = new Audio();
+      // Tiny silent MP3 (1 frame)
+      audio.src = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRwAAAAAAAAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRwAAAAAAAAAAAAAAAAAAAAA=';
+      audio.volume = 0.01;
+      audio.play().then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = 1;
+        unlockedAudioRef.current = audio;
+      }).catch(() => {
+        // Fallback: create element without pre-play
+        unlockedAudioRef.current = audio;
+      });
+    } catch {
+      // Audio element not available
     }
   }, []);
 
@@ -55,6 +77,7 @@ export function useVoiceMode({ onTranscript }) {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
+      // Don't null audioRef if it's the shared unlocked element
       audioRef.current = null;
     }
     setIsSpeaking(false);
@@ -252,7 +275,9 @@ export function useVoiceMode({ onTranscript }) {
       const { audioBase64 } = await res.json();
       if (!audioBase64 || speakCancelledRef.current) return;
 
-      const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
+      // Reuse the unlocked Audio element on iOS, or create new one
+      const audio = unlockedAudioRef.current || new Audio();
+      audio.src = `data:audio/mp3;base64,${audioBase64}`;
       audioRef.current = audio;
       setIsSpeaking(true);
 
