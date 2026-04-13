@@ -22,6 +22,7 @@ export function useVoiceMode({ onTranscript }) {
   const chunksRef = useRef([]);
   const speakCancelledRef = useRef(false);
   const autoListenTimerRef = useRef(null);
+  const isAutoListenRef = useRef(false); // true when recording was auto-started (not user-tapped)
 
   // Keep ref in sync with state for rAF loop
   useEffect(() => {
@@ -123,7 +124,10 @@ export function useVoiceMode({ onTranscript }) {
     });
   }, [interruptSpeaking, stopListening, unlockAudio]);
 
-  const startListening = useCallback(async () => {
+  const startListening = useCallback(async (options = {}) => {
+    const { auto = false } = options;
+    isAutoListenRef.current = auto;
+
     // If already listening, don't start again
     if (isListeningRef.current) return;
 
@@ -179,7 +183,18 @@ export function useVoiceMode({ onTranscript }) {
       const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
       chunksRef.current = [];
 
+      const wasAuto = isAutoListenRef.current;
+
       if (blob.size === 0) {
+        if (wasAuto) {
+          // Auto-listen got silence — quietly restart
+          debug('auto-listen: silence, restarting...');
+          autoListenTimerRef.current = setTimeout(() => {
+            autoListenTimerRef.current = null;
+            startListeningRef.current?.({ auto: true });
+          }, 1000);
+          return;
+        }
         setError("Didn't catch that. Try again.");
         clearError();
         return;
@@ -202,6 +217,15 @@ export function useVoiceMode({ onTranscript }) {
         debug(`STT result: "${transcript || '(empty)'}"`);
 
         if (!transcript) {
+          if (wasAuto) {
+            // Auto-listen got empty transcript — quietly restart
+            debug('auto-listen: empty transcript, restarting...');
+            autoListenTimerRef.current = setTimeout(() => {
+              autoListenTimerRef.current = null;
+              startListeningRef.current?.({ auto: true });
+            }, 1000);
+            return;
+          }
           setError("Didn't catch that. Try again.");
           clearError();
           return;
@@ -300,7 +324,7 @@ export function useVoiceMode({ onTranscript }) {
         autoListenTimerRef.current = setTimeout(() => {
           autoListenTimerRef.current = null;
           debug('speakText: auto-starting listen after TTS');
-          startListeningRef.current?.();
+          startListeningRef.current?.({ auto: true });
         }, 1000);
       };
 
