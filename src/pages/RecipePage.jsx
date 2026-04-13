@@ -34,20 +34,11 @@ export default function RecipePage() {
     setTimeout(() => formRef.current?.requestSubmit(), 0);
   }, []);
 
-  const handleSpeakEnd = useCallback(() => {
-    // Delay before auto-listening so the mic doesn't pick up residual speaker audio
-    setTimeout(() => startListeningRef.current?.(), 1000);
-  }, []);
-
   const {
     voiceModeOn, isListening, isSpeaking,
     toggleVoiceMode, startListening, stopListening,
     speakText, error: voiceError,
-  } = useVoiceMode({ onTranscript: setInput, onAutoSubmit: handleAutoSubmit, onSpeakEnd: handleSpeakEnd });
-
-  // Ref to avoid circular dependency: handleSpeakEnd needs startListening, but hook returns it
-  const startListeningRef = useRef(null);
-  startListeningRef.current = startListening;
+  } = useVoiceMode({ onTranscript: setInput, onAutoSubmit: handleAutoSubmit });
 
   // TTS trigger: speak assistant response when voice mode is on
   const prevLoadingRef = useRef(false);

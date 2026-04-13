@@ -4,7 +4,7 @@ const SILENCE_THRESHOLD = 10;    // average byte frequency below this = silence
 const SILENCE_DURATION = 1500;   // ms of continuous silence before auto-stop
 const MIN_RECORDING_TIME = 2000; // ms — don't auto-stop before this (gives user time to start speaking)
 
-export function useVoiceMode({ onTranscript, onAutoSubmit, onSpeakEnd }) {
+export function useVoiceMode({ onTranscript, onAutoSubmit }) {
   const [voiceModeOn, setVoiceModeOn] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -19,6 +19,7 @@ export function useVoiceMode({ onTranscript, onAutoSubmit, onSpeakEnd }) {
   const isListeningRef = useRef(false);
   const chunksRef = useRef([]);
   const speakCancelledRef = useRef(false);
+  const autoListenTimerRef = useRef(null);
 
   // Keep ref in sync with state for rAF loop
   useEffect(() => {
@@ -40,12 +41,17 @@ export function useVoiceMode({ onTranscript, onAutoSubmit, onSpeakEnd }) {
       source.start(0);
       audioContextRef.current = ctx;
     } catch {
-      // AudioContext not available — TTS may not work on this browser
+      // AudioContext not available
     }
   }, []);
 
   const interruptSpeaking = useCallback(() => {
     speakCancelledRef.current = true;
+    // Cancel any pending auto-listen timer
+    if (autoListenTimerRef.current) {
+      clearTimeout(autoListenTimerRef.current);
+      autoListenTimerRef.current = null;
+    }
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -61,7 +67,6 @@ export function useVoiceMode({ onTranscript, onAutoSubmit, onSpeakEnd }) {
     isListeningRef.current = false;
     recorder.stop();
 
-    // Clean up silence detection audio context
     if (silenceContextRef.current) {
       silenceContextRef.current.close().catch(() => {});
       silenceContextRef.current = null;
@@ -71,13 +76,10 @@ export function useVoiceMode({ onTranscript, onAutoSubmit, onSpeakEnd }) {
   const toggleVoiceMode = useCallback(() => {
     setVoiceModeOn((prev) => {
       if (prev) {
-        // Turning off — clean up
         interruptSpeaking();
         stopListening();
       } else {
-        // Turning on — unlock audio for iOS
         unlockAudio();
-        // Check mic permission
         if (navigator.permissions?.query) {
           navigator.permissions.query({ name: 'microphone' }).then((result) => {
             setMicPermission(result.state);
@@ -92,54 +94,12 @@ export function useVoiceMode({ onTranscript, onAutoSubmit, onSpeakEnd }) {
     });
   }, [interruptSpeaking, stopListening, unlockAudio]);
 
-  const speakText = useCallback(async (text) => {
-    if (!voiceModeOn) return;
-
-    interruptSpeaking();
-    speakCancelledRef.current = false; // reset after our own interrupt
-
-    try {
-      const res = await fetch('/.netlify/functions/voice-tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
-
-      // Check if interrupted during fetch
-      if (speakCancelledRef.current) return;
-
-      if (!res.ok) return;
-
-      const { audioBase64 } = await res.json();
-      if (!audioBase64 || speakCancelledRef.current) return;
-
-      const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
-      audioRef.current = audio;
-      setIsSpeaking(true);
-
-      audio.onended = () => {
-        setIsSpeaking(false);
-        audioRef.current = null;
-        onSpeakEnd?.();
-      };
-
-      audio.onerror = () => {
-        setIsSpeaking(false);
-        audioRef.current = null;
-      };
-
-      await audio.play().catch(() => {
-        setIsSpeaking(false);
-        audioRef.current = null;
-      });
-    } catch {
-      // TTS failure is non-critical
-    }
-  }, [voiceModeOn, interruptSpeaking]);
-
   const startListening = useCallback(async () => {
-    // Interrupt TTS if playing (F6)
-    if (isSpeaking) {
+    // If already listening, don't start again
+    if (isListeningRef.current) return;
+
+    // If TTS is playing, interrupt it first (tap-to-interrupt)
+    if (audioRef.current) {
       interruptSpeaking();
     }
 
@@ -164,7 +124,6 @@ export function useVoiceMode({ onTranscript, onAutoSubmit, onSpeakEnd }) {
     mediaStreamRef.current = stream;
     chunksRef.current = [];
 
-    // Select MIME type
     let mimeType;
     if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
       mimeType = 'audio/webm;codecs=opus';
@@ -183,7 +142,6 @@ export function useVoiceMode({ onTranscript, onAutoSubmit, onSpeakEnd }) {
     };
 
     recorder.onstop = async () => {
-      // Release mic hardware
       mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
       mediaRecorderRef.current = null;
@@ -270,7 +228,58 @@ export function useVoiceMode({ onTranscript, onAutoSubmit, onSpeakEnd }) {
     } catch {
       // Silence detection unavailable — user can still tap to stop manually
     }
-  }, [isSpeaking, interruptSpeaking, onTranscript, onAutoSubmit, stopListening, clearError]);
+  }, [interruptSpeaking, onTranscript, onAutoSubmit, stopListening, clearError]);
+
+  // Ref so speakText's onended can call startListening without stale closure
+  const startListeningRef = useRef(null);
+  startListeningRef.current = startListening;
+
+  const speakText = useCallback(async (text) => {
+    if (!voiceModeOn) return;
+
+    interruptSpeaking();
+    speakCancelledRef.current = false;
+
+    try {
+      const res = await fetch('/.netlify/functions/voice-tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      if (speakCancelledRef.current) return;
+      if (!res.ok) return;
+
+      const { audioBase64 } = await res.json();
+      if (!audioBase64 || speakCancelledRef.current) return;
+
+      const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
+      audioRef.current = audio;
+      setIsSpeaking(true);
+
+      audio.onended = () => {
+        setIsSpeaking(false);
+        audioRef.current = null;
+        // Auto-start listening after TTS finishes, with delay so speaker audio dissipates
+        autoListenTimerRef.current = setTimeout(() => {
+          autoListenTimerRef.current = null;
+          startListeningRef.current?.();
+        }, 1000);
+      };
+
+      audio.onerror = () => {
+        setIsSpeaking(false);
+        audioRef.current = null;
+      };
+
+      await audio.play().catch(() => {
+        setIsSpeaking(false);
+        audioRef.current = null;
+      });
+    } catch {
+      // TTS failure is non-critical
+    }
+  }, [voiceModeOn, interruptSpeaking]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -280,6 +289,7 @@ export function useVoiceMode({ onTranscript, onAutoSubmit, onSpeakEnd }) {
       audioRef.current?.pause();
       audioContextRef.current?.close().catch(() => {});
       silenceContextRef.current?.close().catch(() => {});
+      if (autoListenTimerRef.current) clearTimeout(autoListenTimerRef.current);
     };
   }, []);
 
