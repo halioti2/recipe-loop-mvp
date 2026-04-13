@@ -183,18 +183,7 @@ export function useVoiceMode({ onTranscript }) {
       const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
       chunksRef.current = [];
 
-      const wasAuto = isAutoListenRef.current;
-
       if (blob.size === 0) {
-        if (wasAuto) {
-          // Auto-listen got silence — quietly restart
-          debug('auto-listen: silence, restarting...');
-          autoListenTimerRef.current = setTimeout(() => {
-            autoListenTimerRef.current = null;
-            startListeningRef.current?.({ auto: true });
-          }, 1000);
-          return;
-        }
         setError("Didn't catch that. Try again.");
         clearError();
         return;
@@ -217,15 +206,6 @@ export function useVoiceMode({ onTranscript }) {
         debug(`STT result: "${transcript || '(empty)'}"`);
 
         if (!transcript) {
-          if (wasAuto) {
-            // Auto-listen got empty transcript — quietly restart
-            debug('auto-listen: empty transcript, restarting...');
-            autoListenTimerRef.current = setTimeout(() => {
-              autoListenTimerRef.current = null;
-              startListeningRef.current?.({ auto: true });
-            }, 1000);
-            return;
-          }
           setError("Didn't catch that. Try again.");
           clearError();
           return;
@@ -254,6 +234,7 @@ export function useVoiceMode({ onTranscript }) {
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       let silenceStart = null;
+      let hasSpoken = false;
       const recordingStart = Date.now();
 
       const checkSilence = () => {
@@ -262,7 +243,19 @@ export function useVoiceMode({ onTranscript }) {
         analyser.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
 
-        if (average < SILENCE_THRESHOLD) {
+        if (average >= SILENCE_THRESHOLD) {
+          // Voice detected
+          hasSpoken = true;
+          silenceStart = null;
+        } else if (hasSpoken) {
+          // Silence after speech — start countdown
+          if (!silenceStart) silenceStart = Date.now();
+          if (Date.now() - silenceStart > SILENCE_DURATION) {
+            stopListening();
+            return;
+          }
+        } else if (!isAutoListenRef.current) {
+          // User-initiated recording: allow auto-stop after MIN_RECORDING_TIME even without speech
           if (!silenceStart) silenceStart = Date.now();
           if (
             Date.now() - silenceStart > SILENCE_DURATION &&
@@ -271,9 +264,8 @@ export function useVoiceMode({ onTranscript }) {
             stopListening();
             return;
           }
-        } else {
-          silenceStart = null;
         }
+        // Auto-listen + no speech yet: keep waiting indefinitely
 
         requestAnimationFrame(checkSilence);
       };
