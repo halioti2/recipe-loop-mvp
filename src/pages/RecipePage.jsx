@@ -27,18 +27,20 @@ export default function RecipePage() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const formRef = useRef(null);
+  // Voice mode — pass transcript directly to submitQuestion, bypassing form/state timing
+  const submitQuestionRef = useRef(null);
 
-  // Voice mode
-  const handleAutoSubmit = useCallback(() => {
-    setTimeout(() => formRef.current?.requestSubmit(), 0);
+  const handleVoiceTranscript = useCallback((transcript) => {
+    setInput(transcript); // show in input field
+    // Submit directly — don't rely on React state flush + form requestSubmit
+    setTimeout(() => submitQuestionRef.current?.(transcript), 0);
   }, []);
 
   const {
     voiceModeOn, isListening, isSpeaking,
     toggleVoiceMode, startListening, stopListening,
     speakText, error: voiceError,
-  } = useVoiceMode({ onTranscript: setInput, onAutoSubmit: handleAutoSubmit });
+  } = useVoiceMode({ onTranscript: handleVoiceTranscript });
 
   // TTS trigger: speak assistant response when voice mode is on
   const prevLoadingRef = useRef(false);
@@ -107,11 +109,8 @@ export default function RecipePage() {
     }
   }
 
-  async function handleChatSubmit(e) {
-    e.preventDefault();
-    if (!input.trim() || chatLoading) return;
-
-    const question = input.trim();
+  async function submitQuestion(question) {
+    if (!question.trim() || chatLoading) return;
     setInput('');
     const updatedMessages = [...messages, { role: 'user', text: question }];
     setMessages(updatedMessages);
@@ -139,6 +138,13 @@ export default function RecipePage() {
     } finally {
       setChatLoading(false);
     }
+  }
+
+  submitQuestionRef.current = submitQuestion;
+
+  function handleChatSubmit(e) {
+    e.preventDefault();
+    submitQuestion(input);
   }
 
   if (loading) {
@@ -236,7 +242,7 @@ export default function RecipePage() {
               </div>
             )}
           </div>
-          <form ref={formRef} onSubmit={handleChatSubmit} className="flex gap-2">
+          <form onSubmit={handleChatSubmit} className="flex gap-2">
             <input
               type="text"
               value={input}

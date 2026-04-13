@@ -4,7 +4,7 @@ const SILENCE_THRESHOLD = 10;    // average byte frequency below this = silence
 const SILENCE_DURATION = 1500;   // ms of continuous silence before auto-stop
 const MIN_RECORDING_TIME = 2000; // ms — don't auto-stop before this (gives user time to start speaking)
 
-export function useVoiceMode({ onTranscript, onAutoSubmit }) {
+export function useVoiceMode({ onTranscript }) {
   const [voiceModeOn, setVoiceModeOn] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -178,7 +178,6 @@ export function useVoiceMode({ onTranscript, onAutoSubmit }) {
         }
 
         onTranscript(transcript);
-        setTimeout(() => onAutoSubmit(), 0);
       } catch {
         setError('Voice transcription failed. Try typing instead.');
         clearError();
@@ -228,7 +227,7 @@ export function useVoiceMode({ onTranscript, onAutoSubmit }) {
     } catch {
       // Silence detection unavailable — user can still tap to stop manually
     }
-  }, [interruptSpeaking, onTranscript, onAutoSubmit, stopListening, clearError]);
+  }, [interruptSpeaking, onTranscript, stopListening, clearError]);
 
   // Ref so speakText's onended can call startListening without stale closure
   const startListeningRef = useRef(null);
