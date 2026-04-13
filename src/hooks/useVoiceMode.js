@@ -10,6 +10,7 @@ export function useVoiceMode({ onTranscript }) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [micPermission, setMicPermission] = useState(null);
   const [error, setError] = useState(null);
+  const [debugLog, setDebugLog] = useState([]);
 
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
@@ -26,6 +27,10 @@ export function useVoiceMode({ onTranscript }) {
   useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
+
+  const debug = useCallback((msg) => {
+    setDebugLog((prev) => [...prev.slice(-19), `${new Date().toLocaleTimeString()}: ${msg}`]);
+  }, []);
 
   const clearError = useCallback((delay = 3000) => {
     setTimeout(() => setError(null), delay);
@@ -58,9 +63,10 @@ export function useVoiceMode({ onTranscript }) {
         audio.currentTime = 0;
         audio.volume = 1;
         unlockedAudioRef.current = audio;
-      }).catch(() => {
-        // Fallback: create element without pre-play
+        debug('audio unlock: OK');
+      }).catch((err) => {
         unlockedAudioRef.current = audio;
+        debug(`audio unlock: FAILED - ${err.message}`);
       });
     } catch {
       // Audio element not available
@@ -193,6 +199,7 @@ export function useVoiceMode({ onTranscript }) {
         }
 
         const { transcript } = await res.json();
+        debug(`STT result: "${transcript || '(empty)'}"`);
 
         if (!transcript) {
           setError("Didn't catch that. Try again.");
@@ -210,6 +217,7 @@ export function useVoiceMode({ onTranscript }) {
     recorder.start();
     isListeningRef.current = true;
     setIsListening(true);
+    debug(`startListening: recording (mime=${recorder.mimeType})`);
 
     // Silence detection via Web Audio API AnalyserNode
     try {
@@ -257,23 +265,27 @@ export function useVoiceMode({ onTranscript }) {
   startListeningRef.current = startListening;
 
   const speakText = useCallback(async (text) => {
-    if (!voiceModeOn) return;
+    debug(`speakText called, voiceModeOn=${voiceModeOn}`);
+    if (!voiceModeOn) { debug('speakText: skipped (voice off)'); return; }
 
     interruptSpeaking();
     speakCancelledRef.current = false;
 
     try {
+      debug('speakText: fetching TTS...');
       const res = await fetch('/.netlify/functions/voice-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       });
 
-      if (speakCancelledRef.current) return;
-      if (!res.ok) return;
+      if (speakCancelledRef.current) { debug('speakText: cancelled during fetch'); return; }
+      if (!res.ok) { debug(`speakText: TTS error ${res.status}`); return; }
 
       const { audioBase64 } = await res.json();
-      if (!audioBase64 || speakCancelledRef.current) return;
+      if (!audioBase64 || speakCancelledRef.current) { debug('speakText: no audio or cancelled'); return; }
+
+      debug(`speakText: got audio (${audioBase64.length} chars), unlocked=${!!unlockedAudioRef.current}`);
 
       // Reuse the unlocked Audio element on iOS, or create new one
       const audio = unlockedAudioRef.current || new Audio();
@@ -282,28 +294,33 @@ export function useVoiceMode({ onTranscript }) {
       setIsSpeaking(true);
 
       audio.onended = () => {
+        debug('speakText: audio ended');
         setIsSpeaking(false);
         audioRef.current = null;
-        // Auto-start listening after TTS finishes, with delay so speaker audio dissipates
         autoListenTimerRef.current = setTimeout(() => {
           autoListenTimerRef.current = null;
+          debug('speakText: auto-starting listen after TTS');
           startListeningRef.current?.();
         }, 1000);
       };
 
-      audio.onerror = () => {
+      audio.onerror = (e) => {
+        debug(`speakText: audio ERROR - ${e.type}`);
         setIsSpeaking(false);
         audioRef.current = null;
       };
 
-      await audio.play().catch(() => {
+      await audio.play().then(() => {
+        debug('speakText: play() started OK');
+      }).catch((err) => {
+        debug(`speakText: play() FAILED - ${err.message}`);
         setIsSpeaking(false);
         audioRef.current = null;
       });
-    } catch {
-      // TTS failure is non-critical
+    } catch (err) {
+      debug(`speakText: exception - ${err.message}`);
     }
-  }, [voiceModeOn, interruptSpeaking]);
+  }, [voiceModeOn, interruptSpeaking, debug]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -328,5 +345,6 @@ export function useVoiceMode({ onTranscript }) {
     interruptSpeaking,
     micPermission,
     error,
+    debugLog,
   };
 }

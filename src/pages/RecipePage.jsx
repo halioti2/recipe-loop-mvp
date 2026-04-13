@@ -39,7 +39,7 @@ export default function RecipePage() {
   const {
     voiceModeOn, isListening, isSpeaking,
     toggleVoiceMode, startListening, stopListening,
-    speakText, error: voiceError,
+    speakText, error: voiceError, debugLog,
   } = useVoiceMode({ onTranscript: handleVoiceTranscript });
 
   // TTS trigger: speak assistant response when voice mode is on
@@ -286,6 +286,14 @@ export default function RecipePage() {
           )}
           {isSpeaking && (
             <p className="text-xs text-purple-500 mt-1">Speaking...</p>
+          )}
+          {voiceModeOn && debugLog.length > 0 && (
+            <div className="mt-2 p-2 bg-gray-900 text-green-400 text-[10px] font-mono rounded max-h-32 overflow-y-auto">
+              <div className="flex justify-between mb-1">
+                <span className="text-gray-500">voice={voiceModeOn?'ON':'OFF'} listen={isListening?'Y':'N'} speak={isSpeaking?'Y':'N'}</span>
+              </div>
+              {debugLog.map((line, i) => <div key={i}>{line}</div>)}
+            </div>
           )}
         </>
       ) : (
