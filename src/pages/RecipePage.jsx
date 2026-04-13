@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
+import { useVoiceMode } from '../hooks/useVoiceMode';
 
 function getVideoId(recipe) {
   if (recipe.youtube_video_id) return recipe.youtube_video_id;
@@ -26,6 +27,37 @@ export default function RecipePage() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const formRef = useRef(null);
+
+  // Voice mode
+  const handleAutoSubmit = useCallback(() => {
+    setTimeout(() => formRef.current?.requestSubmit(), 0);
+  }, []);
+
+  const handleSpeakEnd = useCallback(() => {
+    // Delay before auto-listening so the mic doesn't pick up residual speaker audio
+    setTimeout(() => startListeningRef.current?.(), 1000);
+  }, []);
+
+  const {
+    voiceModeOn, isListening, isSpeaking,
+    toggleVoiceMode, startListening, stopListening,
+    speakText, error: voiceError,
+  } = useVoiceMode({ onTranscript: setInput, onAutoSubmit: handleAutoSubmit, onSpeakEnd: handleSpeakEnd });
+
+  // Ref to avoid circular dependency: handleSpeakEnd needs startListening, but hook returns it
+  const startListeningRef = useRef(null);
+  startListeningRef.current = startListening;
+
+  // TTS trigger: speak assistant response when voice mode is on
+  const prevLoadingRef = useRef(false);
+  useEffect(() => {
+    if (prevLoadingRef.current && !chatLoading && voiceModeOn && messages.length > 0) {
+      const last = messages[messages.length - 1];
+      if (last.role === 'assistant') speakText(last.text);
+    }
+    prevLoadingRef.current = chatLoading;
+  }, [chatLoading, voiceModeOn, messages, speakText]);
 
   useEffect(() => {
     async function fetchRecipe() {
@@ -160,7 +192,25 @@ export default function RecipePage() {
 
   const chatPanel = (
     <div className="flex flex-col h-full">
-      <h2 className="text-lg font-semibold text-gray-900 mb-3">Ask about this recipe</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold text-gray-900">Ask about this recipe</h2>
+        <button
+          onClick={toggleVoiceMode}
+          className={`p-2 rounded-full transition-colors ${
+            voiceModeOn ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:text-gray-600'
+          }`}
+          aria-label={voiceModeOn ? 'Turn off voice mode' : 'Turn on voice mode'}
+          title={voiceModeOn ? 'Voice mode on' : 'Voice mode off'}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+            {voiceModeOn ? (
+              <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z" />
+            ) : (
+              <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM17.78 9.22a.75.75 0 10-1.06 1.06L18.44 12l-1.72 1.72a.75.75 0 001.06 1.06l1.72-1.72 1.72 1.72a.75.75 0 101.06-1.06L20.56 12l1.72-1.72a.75.75 0 00-1.06-1.06l-1.72 1.72-1.72-1.72z" />
+            )}
+          </svg>
+        </button>
+      </div>
       {hasTranscript ? (
         <>
           <div className="flex-1 overflow-y-auto space-y-3 mb-4 min-h-0">
@@ -195,14 +245,34 @@ export default function RecipePage() {
               </div>
             )}
           </div>
-          <form onSubmit={handleChatSubmit} className="flex gap-2">
+          <form ref={formRef} onSubmit={handleChatSubmit} className="flex gap-2">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about this recipe..."
+              placeholder={isListening ? 'Listening...' : 'Ask about this recipe...'}
               className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+              disabled={isListening}
             />
+            {voiceModeOn && (
+              <button
+                type="button"
+                onClick={isListening ? stopListening : startListening}
+                disabled={chatLoading}
+                className={`relative p-2 rounded-full transition-colors ${
+                  isListening ? 'bg-red-100 text-red-600' : 'text-gray-400 hover:text-gray-600'
+                }`}
+                aria-label={isListening ? 'Stop recording' : 'Start recording'}
+              >
+                {isListening && (
+                  <span className="absolute inset-0 rounded-full animate-ping bg-red-400 opacity-25" />
+                )}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 relative">
+                  <path d="M8.25 4.5a3.75 3.75 0 117.5 0v8.25a3.75 3.75 0 11-7.5 0V4.5z" />
+                  <path d="M6 10.5a.75.75 0 01.75.75v1.5a5.25 5.25 0 1010.5 0v-1.5a.75.75 0 011.5 0v1.5a6.751 6.751 0 01-6 6.709v2.291h3a.75.75 0 010 1.5h-7.5a.75.75 0 010-1.5h3v-2.291a6.751 6.751 0 01-6-6.709v-1.5A.75.75 0 016 10.5z" />
+                </svg>
+              </button>
+            )}
             <button
               type="submit"
               disabled={!input.trim() || chatLoading}
@@ -211,6 +281,15 @@ export default function RecipePage() {
               →
             </button>
           </form>
+          {voiceError && (
+            <p className="text-xs text-red-500 mt-1">{voiceError}</p>
+          )}
+          {isListening && (
+            <p className="text-xs text-gray-400 mt-1 animate-pulse">Listening... speak your question</p>
+          )}
+          {isSpeaking && (
+            <p className="text-xs text-purple-500 mt-1">Speaking...</p>
+          )}
         </>
       ) : (
         <div className="flex-1 flex items-center justify-center">

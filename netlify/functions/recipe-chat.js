@@ -55,7 +55,7 @@ export async function handler(event) {
       body: JSON.stringify({
         contents,
         generationConfig: {
-          thinkingConfig: { thinkingBudget: 0 },
+          thinkingConfig: { thinkingBudget: 1024 },
         },
       }),
     });
