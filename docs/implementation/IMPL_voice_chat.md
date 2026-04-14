@@ -10,13 +10,13 @@
 
 | # | Requirement | Status |
 |---|-------------|--------|
-| F1 | Mic button in the chat input area that starts/stops listening | Todo |
-| F2 | Visual listening indicator (pulsing ring) while mic is active | Todo |
-| F3 | Transcript appears in input field after user stops speaking (batch STT) | Todo |
-| F4 | Auto-submit after transcript is returned (no tap required) | Todo |
-| F5 | TTS reads every assistant response aloud while voice mode is active | Todo |
-| F6 | Speaking while TTS is playing automatically interrupts and cancels playback | Todo |
-| F7 | Voice mode toggle button; state persists for the session | Todo |
+| F1 | Mic button in the chat input area that starts/stops listening | Done |
+| F2 | Visual listening indicator (pulsing ring) while mic is active | Done |
+| F3 | Transcript appears in input field after user stops speaking (batch STT) | Done |
+| F4 | Auto-submit after transcript is returned (no tap required) | Done |
+| F5 | TTS reads every assistant response aloud while voice mode is active | Done |
+| F6 | Tap mic to interrupt TTS playback (voice-activated interrupt not feasible — browser echo cancellation is unreliable) | Done |
+| F7 | Voice mode toggle button; state persists for the session | Done |
 
 ---
 
@@ -25,8 +25,9 @@
 | # | Requirement | Reason |
 |---|-------------|--------|
 | OS1 | Streaming STT (live interim transcription) | Netlify Functions have a 10s execution limit — streaming requires a persistent connection |
-| OS2 | Always-on wake word detection | PRD out of scope |
-| OS3 | Voice control for non-chat actions (e.g. "pause video") | PRD out of scope — requires LangGraph agent tools (Phase 3) |
+| OS2 | Voice-activated TTS interrupt (speak to interrupt) | Browser `echoCancellation` is unreliable for filtering local TTS playback — tap-to-interrupt used instead |
+| OS3 | Always-on wake word detection | PRD out of scope |
+| OS4 | Voice control for non-chat actions (e.g. "pause video") | PRD out of scope — requires LangGraph agent tools (Phase 3) |
 
 ---
 
