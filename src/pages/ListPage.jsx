@@ -58,11 +58,17 @@ function ListPage() {
   function handleCopyList() {
     let textToCopy = '';
     for (const [title, ingredients] of Object.entries(groupedLists)) {
+      const unchecked = ingredients.filter((_, idx) => !checkedItems[`${title}-${idx}`]);
+      if (unchecked.length === 0) continue;
       textToCopy += `${title}\n`;
-      ingredients.forEach((ingredient) => {
+      unchecked.forEach((ingredient) => {
         textToCopy += `- ${ingredient}\n`;
       });
       textToCopy += '\n'; // Extra newline between recipes
+    }
+    if (!textToCopy) {
+      alert('Nothing to copy — all items are checked.');
+      return;
     }
     navigator.clipboard.writeText(textToCopy)
       .then(() => {

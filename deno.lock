@@ -30,6 +30,7 @@
         "npm:react@19",
         "npm:tailwindcss@^3.4.17",
         "npm:vite@^6.3.1",
+        "npm:vitest@^2.1.9",
         "npm:youtube-transcript@^1.2.1"
       ]
     }

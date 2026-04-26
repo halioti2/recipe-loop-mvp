@@ -64,12 +64,17 @@ export default function GroceryListPage() {
     let text = ''
     lists.forEach(list => {
       const title = list.recipes?.title || 'Unknown Recipe'
+      const ingredients = Array.isArray(list.ingredients) ? list.ingredients : []
+      const unchecked = ingredients.filter((_, idx) => !checkedItems[`${list.id}-${idx}`])
+      if (unchecked.length === 0) return
       text += `${title}\n`
-      if (Array.isArray(list.ingredients)) {
-        list.ingredients.forEach(ing => { text += `- ${ing}\n` })
-      }
+      unchecked.forEach(ing => { text += `- ${ing}\n` })
       text += '\n'
     })
+    if (!text) {
+      setMessage('Nothing to copy — all items are checked.')
+      return
+    }
     navigator.clipboard.writeText(text)
       .then(() => setMessage('Copied to clipboard!'))
       .catch(() => setMessage('Failed to copy.'))
