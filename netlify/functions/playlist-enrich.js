@@ -52,13 +52,23 @@ export async function handler(event, context) {
     const finderResult = await finderResponse.json()
     
     if (!finderResult.success || finderResult.recipes.length === 0) {
+      const playlistsInvolved = finderResult.stats?.playlists_involved ?? []
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
           success: true,
           message: 'No recipes found needing enrichment',
-          stats: finderResult.stats,
+          stats: {
+            recipes_found: 0,
+            recipes_processed: 0,
+            transcripts_added: 0,
+            ingredients_added: 0,
+            total_enriched: 0,
+            errors: 0,
+            success_rate: '0%',
+            playlists_affected: playlistsInvolved.length,
+          },
           total_processed: 0,
           total_enriched: 0
         })

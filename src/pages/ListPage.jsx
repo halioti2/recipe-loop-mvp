@@ -62,7 +62,8 @@ function ListPage() {
       if (unchecked.length === 0) continue;
       textToCopy += `${title}\n`;
       unchecked.forEach((ingredient) => {
-        textToCopy += `- ${ingredient}\n`;
+        const name = typeof ingredient === 'string' ? ingredient : ingredient?.name ?? '';
+        textToCopy += `- ${name}\n`;
       });
       textToCopy += '\n'; // Extra newline between recipes
     }
@@ -156,7 +157,7 @@ function ListPage() {
                   }
                 />
                 <label htmlFor={key} className={isChecked ? "line-through text-gray-400" : "text-sm"}>
-                  {ingredient}
+                  {typeof ingredient === 'string' ? ingredient : ingredient?.name ?? ''}
                 </label>
               </li>
             );

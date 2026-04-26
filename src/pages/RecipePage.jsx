@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useVoiceMode } from '../hooks/useVoiceMode';
+import { ingName, ingCategory, CATEGORY_ORDER, CATEGORY_LABELS } from '../lib/ingredients';
 
 function getVideoId(recipe) {
   if (recipe.youtube_video_id) return recipe.youtube_video_id;
@@ -167,19 +168,43 @@ export default function RecipePage() {
   const videoId = getVideoId(recipe);
   const hasTranscript = !!recipe.transcript;
 
+  const groupedIngredients = (() => {
+    const buckets = Object.fromEntries(CATEGORY_ORDER.map(c => [c, []]))
+    if (Array.isArray(recipe.ingredients)) {
+      recipe.ingredients.forEach(ing => {
+        buckets[ingCategory(ing)].push(ingName(ing))
+      })
+      CATEGORY_ORDER.forEach(c => buckets[c].sort((a, b) => a.localeCompare(b)))
+    }
+    return buckets
+  })();
+
   const recipeContent = (
     <div className="space-y-6">
       {recipe.ingredients?.length > 0 ? (
         <div>
           <h2 className="text-lg font-semibold text-gray-900 mb-3">Ingredients</h2>
-          <ul className="space-y-1">
-            {recipe.ingredients.map((ingredient, idx) => (
-              <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
-                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400 flex-shrink-0" />
-                {ingredient}
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-4">
+            {CATEGORY_ORDER.map(cat => {
+              const items = groupedIngredients[cat];
+              if (items.length === 0) return null;
+              return (
+                <div key={cat}>
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                    {CATEGORY_LABELS[cat]}
+                  </h3>
+                  <ul className="space-y-1">
+                    {items.map((name, idx) => (
+                      <li key={`${cat}-${idx}`} className="flex items-start gap-2 text-sm text-gray-700">
+                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400 flex-shrink-0" />
+                        {name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
         <p className="text-sm text-gray-400 italic">Ingredients not available.</p>

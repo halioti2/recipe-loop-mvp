@@ -109,11 +109,12 @@ export async function handler(event, context) {
       if (!ingredients) return false
       if (!Array.isArray(ingredients)) return false
       if (ingredients.length === 0) return false
-      
-      // Check if ingredients contains meaningful data (not just empty strings)
-      const meaningfulIngredients = ingredients.filter(ing => 
-        ing && typeof ing === 'string' && ing.trim().length > 0
-      )
+
+      // Accept either legacy string entries or new {name, category} objects
+      const meaningfulIngredients = ingredients.filter(ing => {
+        if (typeof ing === 'string') return ing.trim().length > 0
+        return ing && typeof ing.name === 'string' && ing.name.trim().length > 0
+      })
       return meaningfulIngredients.length > 0
     }
 

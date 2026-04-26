@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabaseClient'
+import { ingName, ingCategory, CATEGORY_ORDER, CATEGORY_LABELS } from '../lib/ingredients'
 
 export default function GroceryListPage() {
   const [lists, setLists] = useState([])
@@ -30,7 +31,7 @@ export default function GroceryListPage() {
     try {
       const { data, error } = await supabase
         .from('lists')
-        .select('id, ingredients, created_at, recipes(id, title)')
+        .select('id, ingredients, created_at, recipes(id, title, ingredients)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
@@ -60,17 +61,7 @@ export default function GroceryListPage() {
     }
   }
 
-  const handleCopyList = () => {
-    let text = ''
-    lists.forEach(list => {
-      const title = list.recipes?.title || 'Unknown Recipe'
-      const ingredients = Array.isArray(list.ingredients) ? list.ingredients : []
-      const unchecked = ingredients.filter((_, idx) => !checkedItems[`${list.id}-${idx}`])
-      if (unchecked.length === 0) return
-      text += `${title}\n`
-      unchecked.forEach(ing => { text += `- ${ing}\n` })
-      text += '\n'
-    })
+  const writeToClipboard = (text) => {
     if (!text) {
       setMessage('Nothing to copy — all items are checked.')
       return
@@ -80,8 +71,81 @@ export default function GroceryListPage() {
       .catch(() => setMessage('Failed to copy.'))
   }
 
-  const totalIngredients = lists.reduce((sum, l) =>
-    sum + (Array.isArray(l.ingredients) ? l.ingredients.length : 0), 0)
+  // Prefer the recipe's current ingredients (which include category data after
+  // enrichment) over the snapshot stored on the list at add-time.
+  const ingredientsForList = (list) => {
+    const fresh = list.recipes?.ingredients
+    if (Array.isArray(fresh) && fresh.length > 0) return fresh
+    return Array.isArray(list.ingredients) ? list.ingredients : []
+  }
+
+  const itemKey = (list, ing) => `${list.id}::${ingName(ing).toLowerCase()}`
+
+  const handleCopyList = () => {
+    let text = ''
+    lists.forEach(list => {
+      const title = list.recipes?.title || 'Unknown Recipe'
+      const ingredients = ingredientsForList(list)
+      const unchecked = ingredients.filter(ing => !checkedItems[itemKey(list, ing)])
+      if (unchecked.length === 0) return
+      text += `${title}\n`
+      unchecked.forEach(ing => { text += `- ${ingName(ing)}\n` })
+      text += '\n'
+    })
+    writeToClipboard(text)
+  }
+
+  const handleCopyRecipe = (list) => {
+    const title = list.recipes?.title || 'Unknown Recipe'
+    const ingredients = ingredientsForList(list)
+    const unchecked = ingredients.filter(ing => !checkedItems[itemKey(list, ing)])
+    if (unchecked.length === 0) {
+      setMessage('Nothing to copy — all items in this recipe are checked.')
+      return
+    }
+    let text = `${title}\n`
+    unchecked.forEach(ing => { text += `- ${ingName(ing)}\n` })
+    writeToClipboard(text)
+  }
+
+  // Aggregate all ingredients across lists, bucketed by category. Includes
+  // checked state so the view can show strike-through and toggle either way.
+  const groupedByCategory = (() => {
+    const buckets = Object.fromEntries(CATEGORY_ORDER.map(c => [c, []]))
+    lists.forEach(list => {
+      const recipeTitle = list.recipes?.title || 'Unknown Recipe'
+      ingredientsForList(list).forEach(ing => {
+        const key = itemKey(list, ing)
+        const cat = ingCategory(ing)
+        buckets[cat].push({
+          key,
+          name: ingName(ing),
+          recipeTitle,
+          isChecked: !!checkedItems[key],
+        })
+      })
+    })
+    CATEGORY_ORDER.forEach(c => {
+      buckets[c].sort((a, b) => a.name.localeCompare(b.name))
+    })
+    return buckets
+  })()
+
+  const handleCopyByCategory = () => {
+    let text = ''
+    CATEGORY_ORDER.forEach(cat => {
+      const items = groupedByCategory[cat].filter(i => !i.isChecked)
+      if (items.length === 0) return
+      text += `${CATEGORY_LABELS[cat]}\n`
+      items.forEach(({ name }) => { text += `- ${name}\n` })
+      text += '\n'
+    })
+    writeToClipboard(text)
+  }
+
+  const totalIngredients = lists.reduce((sum, l) => sum + ingredientsForList(l).length, 0)
+
+  const aggregateHasItems = CATEGORY_ORDER.some(c => groupedByCategory[c].length > 0)
 
   if (loading) {
     return (
@@ -120,7 +184,7 @@ export default function GroceryListPage() {
         <div className="space-y-6">
           {lists.map((list) => {
             const title = list.recipes?.title || 'Unknown Recipe'
-            const ingredients = Array.isArray(list.ingredients) ? list.ingredients : []
+            const ingredients = ingredientsForList(list)
 
             return (
               <div key={list.id} className="bg-white shadow rounded-lg p-6">
@@ -131,44 +195,122 @@ export default function GroceryListPage() {
                       Added: {new Date(list.created_at).toLocaleDateString()}
                     </div>
                   </div>
-                  <button
-                    onClick={() => deleteList(list.id)}
-                    className="text-red-600 hover:text-red-800 text-sm"
-                  >
-                    Remove
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleCopyRecipe(list)}
+                      className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md text-xs"
+                    >
+                      Copy
+                    </button>
+                    <button
+                      onClick={() => deleteList(list.id)}
+                      className="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
 
-                {ingredients.length > 0 && (
-                  <ul className="space-y-2">
-                    {ingredients.map((ingredient, idx) => {
-                      const key = `${list.id}-${idx}`
-                      const isChecked = checkedItems[key] || false
-                      return (
-                        <li key={key} className="flex items-center space-x-2">
+                {ingredients.length > 0 && (() => {
+                  const buckets = Object.fromEntries(CATEGORY_ORDER.map(c => [c, []]))
+                  ingredients.forEach(ing => {
+                    buckets[ingCategory(ing)].push({ name: ingName(ing), key: itemKey(list, ing) })
+                  })
+                  CATEGORY_ORDER.forEach(c =>
+                    buckets[c].sort((a, b) => a.name.localeCompare(b.name))
+                  )
+                  return (
+                    <div className="space-y-3">
+                      {CATEGORY_ORDER.map(cat => {
+                        const items = buckets[cat]
+                        if (items.length === 0) return null
+                        return (
+                          <div key={cat}>
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                              {CATEGORY_LABELS[cat]}
+                            </h4>
+                            <ul className="space-y-1">
+                              {items.map(({ name, key }) => {
+                                const isChecked = checkedItems[key] || false
+                                return (
+                                  <li key={key} className="flex items-center space-x-2">
+                                    <input
+                                      type="checkbox"
+                                      id={key}
+                                      className="w-4 h-4"
+                                      checked={isChecked}
+                                      onChange={() =>
+                                        setCheckedItems(prev => ({ ...prev, [key]: !prev[key] }))
+                                      }
+                                    />
+                                    <label
+                                      htmlFor={key}
+                                      className={isChecked ? 'line-through text-gray-400 text-sm' : 'text-sm text-gray-700'}
+                                    >
+                                      {name}
+                                    </label>
+                                  </li>
+                                )
+                              })}
+                            </ul>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {lists.length > 0 && (
+        <div className="mt-8 bg-white shadow rounded-lg p-6">
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="text-lg font-medium text-gray-900">Shopping List by Section</h3>
+            <button
+              onClick={handleCopyByCategory}
+              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md text-xs"
+            >
+              Copy
+            </button>
+          </div>
+          {aggregateHasItems ? (
+            <div className="space-y-4">
+              {CATEGORY_ORDER.map(cat => {
+                const items = groupedByCategory[cat]
+                if (items.length === 0) return null
+                return (
+                  <div key={cat}>
+                    <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                      {CATEGORY_LABELS[cat]} ({items.filter(i => !i.isChecked).length})
+                    </h4>
+                    <ul className="space-y-1">
+                      {items.map(({ key, name, recipeTitle, isChecked }) => (
+                        <li key={`agg-${key}`} className="flex items-center space-x-2">
                           <input
                             type="checkbox"
-                            id={key}
                             className="w-4 h-4"
                             checked={isChecked}
                             onChange={() =>
                               setCheckedItems(prev => ({ ...prev, [key]: !prev[key] }))
                             }
                           />
-                          <label
-                            htmlFor={key}
-                            className={isChecked ? 'line-through text-gray-400 text-sm' : 'text-sm text-gray-700'}
-                          >
-                            {ingredient}
-                          </label>
+                          <span className={isChecked ? 'text-sm text-gray-400 line-through' : 'text-sm text-gray-700'}>
+                            {name}
+                            <span className="text-xs text-gray-400 ml-2">({recipeTitle})</span>
+                          </span>
                         </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </div>
-            )
-          })}
+                      ))}
+                    </ul>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No ingredients yet.</p>
+          )}
         </div>
       )}
 

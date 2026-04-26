@@ -20,6 +20,30 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY
 const SUPADATA_TRANSCRIPT_URL = 'https://api.supadata.ai/v1/youtube/transcript'
 
+const VALID_CATEGORIES = new Set([
+  'produce',
+  'meat_seafood',
+  'dairy_eggs',
+  'bakery',
+  'frozen',
+  'pantry',
+  'other',
+])
+
+function normalizeIngredients(parsed) {
+  return parsed
+    .map(item => {
+      if (typeof item === 'string') {
+        return { name: item.trim(), category: 'other' }
+      }
+      const name = typeof item?.name === 'string' ? item.name.trim() : ''
+      const rawCat = typeof item?.category === 'string' ? item.category.trim().toLowerCase() : ''
+      const category = VALID_CATEGORIES.has(rawCat) ? rawCat : 'other'
+      return { name, category }
+    })
+    .filter(item => item.name.length > 0)
+}
+
 // Timing utilities
 const timings = {}
 
@@ -156,7 +180,22 @@ export async function handler(event, context) {
           try {
             startTimer(`${recipeKey}_transcript_to_gemini_call`)
 
-            const prompt = `Extract the ingredients from this recipe transcript. Return only a JSON array of ingredient strings (e.g., ["1 cup flour", "2 eggs", "1 tsp salt"]). Be specific about quantities and measurements.
+            const prompt = `Extract the ingredients from this recipe transcript. Return ONLY a JSON array of objects with this exact shape:
+[{"name": "1 cup flour", "category": "pantry"}, {"name": "2 eggs", "category": "dairy_eggs"}]
+
+Each "name" must include quantity and measurement when stated.
+
+Each "category" MUST be exactly one of these seven values (lowercase, snake_case):
+- "produce"        — fresh fruits, vegetables, fresh herbs
+- "meat_seafood"   — raw meat, poultry, fish, shellfish
+- "dairy_eggs"     — milk, cheese, yogurt, butter, cream, eggs
+- "bakery"         — bread, tortillas, baked goods (NOT flour/sugar/baking ingredients — those are pantry)
+- "frozen"         — anything sold frozen
+- "pantry"         — shelf-stable: flour, sugar, oil, vinegar, spices, dried herbs, sauces, condiments, pasta, rice, canned goods, stock, baking ingredients
+- "other"          — anything that does not clearly fit above (beverages, garnishes, non-food)
+
+Do not invent categories. Do not use any value outside this list. If unsure, use "other".
+Return only the JSON array — no prose, no markdown fences.
 
 Transcript: ${transcript}`
 
@@ -190,7 +229,7 @@ Transcript: ${transcript}`
                 const parsedIngredients = JSON.parse(cleanedText)
 
                 if (Array.isArray(parsedIngredients) && parsedIngredients.length > 0) {
-                  ingredients = parsedIngredients
+                  ingredients = normalizeIngredients(parsedIngredients)
                   console.log(`✅ Ingredients generated for: ${recipe.title}`)
                 } else {
                   console.log(`⚠️  Invalid ingredients format for: ${recipe.title}`)

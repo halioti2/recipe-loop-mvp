@@ -550,7 +550,9 @@ export default function HomePageTest() {
                           <h4 className="font-medium text-gray-700 mb-2">Ingredients:</h4>
                           <ul className="list-disc list-inside space-y-1 text-sm text-gray-800 max-h-32 overflow-y-auto">
                             {recipe.ingredients.map((ingredient, idx) => (
-                              <li key={`${recipe.id}-ingredient-${idx}`}>{ingredient}</li>
+                              <li key={`${recipe.id}-ingredient-${idx}`}>
+                                {typeof ingredient === 'string' ? ingredient : ingredient?.name ?? ''}
+                              </li>
                             ))}
                           </ul>
                         </div>
